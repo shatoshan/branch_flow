@@ -31,4 +31,6 @@ BranchFlow is a scenario terminal for conditional option-buying decisions under 
 - `status/` must match backlog state
 - keep `AGENTS.md` small; do not store live task notes here
 - write `worklog/` in Japanese
+- commit changes per work unit
+- push at each milestone boundary
 - keep durable rationale in `materials/` or a future `decisions/` directory if added
