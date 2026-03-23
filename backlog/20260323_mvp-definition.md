@@ -1,7 +1,8 @@
 # 20260323 MVP Definition
 
-Status: open
-Worklog: worklog/20260323_初期セットアップ.md
+Status: done
+Worklog: worklog/20260323_計画詳細化.md
+Result: plan/20260323_mvp-onepager.md
 
 ## Goal
 BranchFlow の最小プロダクト定義を 1 ページで固定する。

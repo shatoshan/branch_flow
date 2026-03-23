@@ -1,9 +1,9 @@
 # Current
 
-1) 現在の主対象: BranchFlow の初期骨格を作成し、次に MVP 定義へ入ること
-2) 実行中バックログ: [20260323_mvp-definition.md](../backlog/20260323_mvp-definition.md)
-3) 進行中: リポジトリ骨格作成済み。次は MVP の最小要件、シナリオカード、データ境界を定義する
+1) 現在の主対象: Manual Ops Spec を固め、ローカル Web UI の最初の入力と画面起点を決めること
+2) 実行中バックログ: [20260323_manual-ops-spec.md](../backlog/20260323_manual-ops-spec.md)
+3) 進行中: MVP one-pager を固定済み。次は日経平均向けの手動運用ループ、入力テンプレート、サンプルシナリオを定義する
 4) ブロッカー: なし
-5) 参照ファイル: [AGENTS.md](../AGENTS.md), [active.md](../plan/active.md), [20260323_初期セットアップ.md](../worklog/20260323_初期セットアップ.md)
-6) まず実行すること: MVP の対象範囲と最初の入出力を 1 ページに固定する
-7) 完了条件: MVP 定義、最初のバックログ分解、初期ワイヤーの叩き台が揃うこと
+5) 参照ファイル: [active.md](../plan/active.md), [20260323_mvp-onepager.md](../plan/20260323_mvp-onepager.md), [20260323_mvp-planning.md](../plan/20260323_mvp-planning.md), [20260323_計画詳細化.md](../worklog/20260323_計画詳細化.md)
+6) まず実行すること: manual-first の入力雛形と日次運用ループを 1 ページに固定する
+7) 完了条件: manual ops spec、サンプルシナリオ、初期ワイヤーの起点が揃うこと
