@@ -1,4 +1,4 @@
 # Next
 
-- [20260323_mvp-definition.md](../backlog/20260323_mvp-definition.md): MVP 定義と最初の操作フロー固定
-- 候補: データソース整理、シナリオカード JSON スキーマ、ホーム画面ワイヤー
+- [20260324_prototype-build.md](../backlog/20260324_prototype-build.md): home/detail の最小プロトタイプ構築
+- 候補: `scenario form` 骨格、`daily review form` 骨格、seed data の import-friendly 化

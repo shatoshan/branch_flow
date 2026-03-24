@@ -1,7 +1,9 @@
 # 20260324 Product Skeleton
 
-Status: open
+Status: done
 Prerequisite: plan/20260324_manual-ops-spec.md
+Worklog: worklog/20260324_product-skeleton.md
+Result: plan/20260324_product-skeleton.md
 
 ## Goal
 ローカル Web UI の最初のワイヤー、状態遷移、最小データ構造を決める。
