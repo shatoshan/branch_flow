@@ -7,6 +7,7 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - [Foundation](./20260323_foundation.md): ここまでの壁打ち内容を集約した基礎設計メモ
 - [MVP Detailed Planning](./20260323_mvp-planning.md): MVP 像、ロードマップ、意思決定を整理した実行計画
 - [MVP One Pager](./20260323_mvp-onepager.md): 固定済みの MVP 定義
+- [Manual Ops Spec](./20260324_manual-ops-spec.md): 日次運用ループ、入力テンプレート、サンプルシナリオ、次フェーズへの受け渡し条件
 
 ## Phase Plan
 1. Bootstrap
@@ -44,6 +45,6 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - LLM の説明レイヤーを追加する
 
 ## Current Focus
-- Phase 2A は完了。現在は Phase 2B: Manual Ops Spec
-- 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル
-- 次の成果物は manual ops spec、入力テンプレート、サンプルシナリオ、初期ワイヤーの起点
+- Phase 2B は完了。現在は Phase 3: Product Skeleton
+- 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model
+- 次の成果物は home wire、detail wire、状態遷移、最小データモデル

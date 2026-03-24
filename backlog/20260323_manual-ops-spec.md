@@ -1,7 +1,8 @@
 # 20260323 Manual Ops Spec
 
-Status: open
-Worklog: worklog/20260323_計画詳細化.md
+Status: done
+Worklog: worklog/20260324_manual-ops-spec.md
+Result: plan/20260324_manual-ops-spec.md
 
 ## Goal
 日経平均向け manual-first 運用の入力テンプレートと日次ループを固定し、ローカル Web UI の最初の土台を作る。
