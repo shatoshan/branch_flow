@@ -1,7 +1,9 @@
 # 20260324 Prototype Build
 
-Status: open
+Status: done
 Prerequisite: plan/20260324_product-skeleton.md
+Worklog: worklog/20260324_prototype-build.md
+Result: web/, materials/20260324_prototype-stack.md
 
 ## Goal
 Product Skeleton で固定した wire とデータモデルを、動くローカル Web UI の最小プロトタイプに落とす。

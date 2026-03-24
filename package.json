@@ -1,0 +1,9 @@
+{
+  "name": "branchflow-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "serve": "python -m http.server 4173 --directory web"
+  }
+}

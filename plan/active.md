@@ -46,6 +46,6 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - LLM の説明レイヤーを追加する
 
 ## Current Focus
-- Phase 4 は完了。現在は Phase 5: Prototype Build
-- 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model / Product Skeleton
-- 次の成果物は UI scaffold、sample data、home/detail read path、必要なら最小フォーム骨格
+- Phase 5 の core read-only prototype は完了
+- 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model / Product Skeleton / static prototype stack
+- 次の成果物は `scenario form`, `daily review form`, append-only write path, import-friendly seed surface
