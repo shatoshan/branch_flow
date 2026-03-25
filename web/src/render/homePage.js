@@ -1,6 +1,5 @@
 import {
   escapeHtml,
-  formatList,
   formatStatus,
   formatTimestamp
 } from "../lib/formatters.js";
@@ -68,7 +67,7 @@ export function renderHomePage({ views, asOf, dueOnly }) {
           <div>
             <p class="eyebrow">BranchFlow Prototype</p>
             <h1>Conditional option-buying terminal</h1>
-            <p>Forecasts are out of scope. This read-only skeleton keeps manual-first scenario review visible through the current view, latest reason code, and due timing.</p>
+            <p>Forecasts are out of scope. Stable thesis records now persist in the browser, while review events stay split into the next append-only backlog.</p>
           </div>
           <div class="timestamp">As of ${escapeHtml(formatTimestamp(asOf))}</div>
         </div>
@@ -77,7 +76,7 @@ export function renderHomePage({ views, asOf, dueOnly }) {
       <section class="panel toolbar">
         <div class="toolbar-row">
           <div class="action-row">
-            <a class="action primary" href="#entry-surfaces">New Scenario</a>
+            <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
             <a class="action ghost" href="#entry-surfaces">Daily Review</a>
           </div>
           <div class="action-row">
@@ -98,18 +97,18 @@ export function renderHomePage({ views, asOf, dueOnly }) {
 
       <section id="entry-surfaces" class="entry-grid">
         <section class="panel entry-panel">
-          <h2 class="section-title">Scenario Form Split</h2>
-          <p class="section-copy">Next build target: stable thesis fields stay separate from per-review updates.</p>
+          <h2 class="section-title">Scenario Form</h2>
+          <p class="section-copy">Live now: detail.html owns stable thesis create/edit, backed by a shared browser record store.</p>
           <ul class="summary-list">
-            <li><strong>Fixed thesis:</strong> market, direction, horizon, observation trigger, flow chain, invalidation rule</li>
-            <li><strong>Read path owner:</strong> scenario and scenario_current_view</li>
-            <li><strong>Seed tags:</strong> ${escapeHtml(formatList(["rates", "gap", "event", "support"]))}</li>
+            <li><strong>Saved fields:</strong> market, direction, summary, horizon, trigger, flow, invalidation, cadence, tags, notes</li>
+            <li><strong>Open path:</strong> New Scenario on home, Edit Scenario on detail</li>
+            <li><strong>Persistence:</strong> localStorage snapshot shared across home/detail</li>
           </ul>
         </section>
 
         <section class="panel entry-panel">
           <h2 class="section-title">Daily Review Split</h2>
-          <p class="section-copy">Per-review records stay append-only and keep rejected vs invalidated reasons separable.</p>
+          <p class="section-copy">Next backlog: per-review records stay append-only and keep rejected vs invalidated reasons separable.</p>
           <ul class="summary-list">
             <li><strong>Observation:</strong> snapshot, session phase, trigger state, observed signals</li>
             <li><strong>Price gate:</strong> overall gate, fail reason codes, budget / IV checks</li>

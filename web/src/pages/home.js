@@ -1,4 +1,4 @@
-import { prototypeRecords } from "../data/sampleRecords.js";
+import { loadRecords } from "../lib/browserRecordStore.js";
 import { buildScenarioCurrentViews } from "../lib/scenarioViews.js";
 import { renderHomePage } from "../render/homePage.js";
 
@@ -31,10 +31,11 @@ function bindFilterActions() {
 
 function render() {
   const dueOnly = getDueOnly();
-  const views = buildScenarioCurrentViews(prototypeRecords, prototypeRecords.prototypeClock);
+  const records = loadRecords();
+  const views = buildScenarioCurrentViews(records, records.prototypeClock);
   app.innerHTML = renderHomePage({
     views,
-    asOf: prototypeRecords.prototypeClock,
+    asOf: records.prototypeClock,
     dueOnly
   });
 

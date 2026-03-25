@@ -9,6 +9,8 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - [MVP One Pager](./20260323_mvp-onepager.md): 固定済みの MVP 定義
 - [Manual Ops Spec](./20260324_manual-ops-spec.md): 日次運用ループ、入力テンプレート、サンプルシナリオ、次フェーズへの受け渡し条件
 - [Product Skeleton](./20260324_product-skeleton.md): home/detail wire、状態遷移、`scenario_current_view` を含む最小データモデル
+- [Input Write Path Planning](./20260325_input-write-path.md): `scenario form` 先行の next action、localStorage 前提の保存面、backlog 分割方針
+- [Scenario Form Execution Plan](./20260325_scenario-form-foundation-execution.md): `scenario form` foundation の実装順、shared form surface、verification の固定
 
 ## Phase Plan
 1. Bootstrap
@@ -46,6 +48,8 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - LLM の説明レイヤーを追加する
 
 ## Current Focus
-- Phase 5 の core read-only prototype は完了
-- 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model / Product Skeleton / static prototype stack
-- 次の成果物は `scenario form`, `daily review form`, append-only write path, import-friendly seed surface
+- Phase 5 の core read-only prototype と `scenario form` foundation は完了
+- 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model / Product Skeleton / static prototype stack / browser record store / `localStorage` 永続化 / `detail.html` shared scenario form
+- 次着手は `daily review append path`。`observation_snapshot`, `price_gate`, `status_event` を 1 submit で追記する append-only write path を入れる
+- その後に operator surface hardening と日本語化 backlog を進める
+- 3 本目で seed reset と JSON export/import を含む import-friendly surface を整える

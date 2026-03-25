@@ -1,9 +1,9 @@
 # Current
 
-1) 現在の主対象: Phase 5 の read-only prototype は完了。次は入力面の骨格と最小 write path
-2) 実行中バックログ: なし（[20260324_prototype-build.md](../backlog/20260324_prototype-build.md) は完了）
-3) 進行中: `web/` に home/detail、sample data、`scenario_current_view` selector、smoke check を追加済み
+1) 現在の主対象: `scenario form` foundation は完了。次着手は `daily review append path`
+2) 実行中バックログ: [20260325_daily-review-append-path.md](../backlog/20260325_daily-review-append-path.md) を `ready` に更新
+3) 進行中: browser record store, `localStorage` 永続化, `detail.html` shared scenario form, home/detail の create/update 導線まで実装した
 4) ブロッカー: なし
-5) 参照ファイル: [active.md](../plan/active.md), [20260324_product-skeleton.md](../plan/20260324_product-skeleton.md), [20260324_manual-ops-spec.md](../plan/20260324_manual-ops-spec.md), [20260324_prototype-stack.md](../materials/20260324_prototype-stack.md)
-6) まず実行すること: `scenario form` と `daily review form` の backlog を切り、append-only write path を追加する
-7) 完了条件: フォーム分離が UI に現れ、`scenario`, `observation_snapshot`, `price_gate`, `status_event` を手入力で追加できること
+5) 参照ファイル: [active.md](../plan/active.md), [20260325_input-write-path.md](../plan/20260325_input-write-path.md), [20260325_scenario-form-foundation-execution.md](../plan/20260325_scenario-form-foundation-execution.md), [20260325_daily-review-append-path.md](../backlog/20260325_daily-review-append-path.md), [20260325_scenario-form-foundation.md](../backlog/20260325_scenario-form-foundation.md), [20260325_scenario-form-foundation.md](../worklog/20260325_scenario-form-foundation.md)
+6) まず実行すること: home/detail の `Add Daily Review` を append-only form に差し替え、1 submit で `observation_snapshot`, `price_gate`, `status_event` を追加する
+7) 完了条件: review 追記が reload を跨いで残り、`scenario_current_view`, detail history, status 表示が即時更新されること

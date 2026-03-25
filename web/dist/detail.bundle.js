@@ -309,6 +309,91 @@
       "prototypeRecords": prototypeRecords
     };
   },
+  "src/lib/browserRecordStore.js": function(requireModule) {
+    const { prototypeRecords } = requireModule("src/data/sampleRecords.js");
+    const { cloneRecords, upsertScenarioRecords } = requireModule("src/lib/scenarioDraft.js");
+    const browserRecordStorageKey = "branchflow.prototype-records.v1";
+    
+    function canUseLocalStorage() {
+      return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+    }
+    
+    function isValidRecordsSnapshot(records) {
+      return (
+        records &&
+        typeof records.prototypeClock === "string" &&
+        Array.isArray(records.scenarios) &&
+        Array.isArray(records.observationSnapshots) &&
+        Array.isArray(records.priceGates) &&
+        Array.isArray(records.statusEvents)
+      );
+    }
+    
+    function clonePrototypeRecords() {
+      return cloneRecords(prototypeRecords);
+    }
+    
+    function loadRecords() {
+      const fallbackRecords = clonePrototypeRecords();
+      if (!canUseLocalStorage()) {
+        return fallbackRecords;
+      }
+    
+      try {
+        const rawValue = window.localStorage.getItem(browserRecordStorageKey);
+        if (!rawValue) {
+          return fallbackRecords;
+        }
+    
+        const parsed = JSON.parse(rawValue);
+        return isValidRecordsSnapshot(parsed) ? parsed : fallbackRecords;
+      } catch (error) {
+        console.warn("loadRecords failed; falling back to prototype seed", error);
+        return fallbackRecords;
+      }
+    }
+    
+    function saveRecords(records) {
+      const snapshot = cloneRecords(records);
+      if (!canUseLocalStorage()) {
+        return snapshot;
+      }
+    
+      try {
+        window.localStorage.setItem(browserRecordStorageKey, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn("saveRecords failed", error);
+      }
+    
+      return snapshot;
+    }
+    
+    function upsertScenarioInStore(rawInput) {
+      const records = loadRecords();
+      const result = upsertScenarioRecords(records, rawInput);
+      if (!result.ok) {
+        return result;
+      }
+    
+      const savedRecords = saveRecords(result.records);
+      const savedScenario =
+        savedRecords.scenarios.find((scenario) => scenario.scenario_id === result.scenario.scenario_id) ?? result.scenario;
+    
+      return {
+        ...result,
+        records: savedRecords,
+        scenario: savedScenario
+      };
+    }
+    
+    return {
+      "browserRecordStorageKey": browserRecordStorageKey,
+      "clonePrototypeRecords": clonePrototypeRecords,
+      "loadRecords": loadRecords,
+      "saveRecords": saveRecords,
+      "upsertScenarioInStore": upsertScenarioInStore
+    };
+  },
   "src/lib/formatters.js": function(requireModule) {
     const statusLabels = {
       watch: "Watch",
@@ -440,6 +525,206 @@
       "compareDesc": compareDesc
     };
   },
+  "src/lib/scenarioDraft.js": function(requireModule) {
+    const scenarioFormOptions = {
+      markets: ["nikkei225"],
+      directions: ["downside", "upside"],
+      horizonBuckets: ["1d_2w"],
+      entryWindows: ["same_day", "same_week", "next_3_sessions", "next_5_sessions"],
+      priceGatePolicies: ["standard_min_gate", "event_guarded_gate"],
+      reviewCadences: ["morning", "intraday", "after_close", "weekly"]
+    };
+    
+    const requiredTextFields = [
+      "scenario_id",
+      "market",
+      "direction",
+      "scenario_summary",
+      "horizon_bucket",
+      "entry_window",
+      "observation_trigger",
+      "flow_chain",
+      "price_gate_policy",
+      "invalidation_rule"
+    ];
+    
+    function normalizeText(value) {
+      return String(value ?? "").trim();
+    }
+    
+    function dedupePreservingOrder(values) {
+      const seen = new Set();
+      const deduped = [];
+    
+      for (const value of values) {
+        if (!value || seen.has(value)) {
+          continue;
+        }
+    
+        seen.add(value);
+        deduped.push(value);
+      }
+    
+      return deduped;
+    }
+    
+    function normalizeReviewCadence(values) {
+      const rawValues = Array.isArray(values) ? values : [values];
+      const normalized = dedupePreservingOrder(rawValues.map((value) => normalizeText(value)));
+      return scenarioFormOptions.reviewCadences.filter((cadence) => normalized.includes(cadence));
+    }
+    
+    function normalizeTags(values) {
+      if (Array.isArray(values)) {
+        return dedupePreservingOrder(values.map((value) => normalizeText(value)));
+      }
+    
+      return dedupePreservingOrder(
+        normalizeText(values)
+          .split(/[;,]/)
+          .map((value) => value.trim())
+      );
+    }
+    
+    function buildDraft(rawInput) {
+      return {
+        scenario_id: normalizeText(rawInput.scenario_id),
+        market: normalizeText(rawInput.market),
+        direction: normalizeText(rawInput.direction),
+        scenario_summary: normalizeText(rawInput.scenario_summary),
+        horizon_bucket: normalizeText(rawInput.horizon_bucket),
+        entry_window: normalizeText(rawInput.entry_window),
+        observation_trigger: normalizeText(rawInput.observation_trigger),
+        flow_chain: normalizeText(rawInput.flow_chain),
+        price_gate_policy: normalizeText(rawInput.price_gate_policy),
+        invalidation_rule: normalizeText(rawInput.invalidation_rule),
+        review_cadence: normalizeReviewCadence(rawInput.review_cadence),
+        tags: normalizeTags(rawInput.tags),
+        notes: normalizeText(rawInput.notes)
+      };
+    }
+    
+    function pushRequiredFieldErrors(draft, errors) {
+      for (const field of requiredTextFields) {
+        if (!draft[field]) {
+          errors.push(`${field} is required`);
+        }
+      }
+    }
+    
+    function pushEnumError(field, value, allowedValues, errors) {
+      if (!allowedValues.includes(value)) {
+        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+      }
+    }
+    
+    function cloneRecords(records) {
+      return JSON.parse(JSON.stringify(records));
+    }
+    
+    function createEmptyScenarioDraft() {
+      return {
+        scenario_id: "",
+        market: scenarioFormOptions.markets[0],
+        direction: scenarioFormOptions.directions[0],
+        scenario_summary: "",
+        horizon_bucket: scenarioFormOptions.horizonBuckets[0],
+        entry_window: scenarioFormOptions.entryWindows[3],
+        observation_trigger: "",
+        flow_chain: "",
+        price_gate_policy: scenarioFormOptions.priceGatePolicies[0],
+        invalidation_rule: "",
+        review_cadence: ["morning", "intraday", "after_close"],
+        tags: [],
+        notes: ""
+      };
+    }
+    
+    function scenarioToDraft(scenario) {
+      return {
+        scenario_id: scenario.scenario_id,
+        market: scenario.market,
+        direction: scenario.direction,
+        scenario_summary: scenario.scenario_summary,
+        horizon_bucket: scenario.horizon_bucket,
+        entry_window: scenario.entry_window,
+        observation_trigger: scenario.observation_trigger,
+        flow_chain: scenario.flow_chain,
+        price_gate_policy: scenario.price_gate_policy,
+        invalidation_rule: scenario.invalidation_rule,
+        review_cadence: [...scenario.review_cadence],
+        tags: [...scenario.tags],
+        notes: scenario.notes ?? ""
+      };
+    }
+    
+    function normalizeScenarioDraftInput(rawInput) {
+      const draft = buildDraft(rawInput);
+      const errors = [];
+    
+      pushRequiredFieldErrors(draft, errors);
+      pushEnumError("market", draft.market, scenarioFormOptions.markets, errors);
+      pushEnumError("direction", draft.direction, scenarioFormOptions.directions, errors);
+      pushEnumError("horizon_bucket", draft.horizon_bucket, scenarioFormOptions.horizonBuckets, errors);
+      pushEnumError("entry_window", draft.entry_window, scenarioFormOptions.entryWindows, errors);
+      pushEnumError("price_gate_policy", draft.price_gate_policy, scenarioFormOptions.priceGatePolicies, errors);
+    
+      if (draft.review_cadence.length === 0) {
+        errors.push("review_cadence requires at least one selection");
+      }
+    
+      return {
+        draft,
+        errors
+      };
+    }
+    
+    function upsertScenarioRecords(records, rawInput) {
+      const { draft, errors } = normalizeScenarioDraftInput(rawInput);
+      if (errors.length > 0) {
+        return {
+          ok: false,
+          errors,
+          draft
+        };
+      }
+    
+      const nextRecords = cloneRecords(records);
+      const existingIndex = nextRecords.scenarios.findIndex((scenario) => scenario.scenario_id === draft.scenario_id);
+      const existingScenario = existingIndex >= 0 ? nextRecords.scenarios[existingIndex] : null;
+      const nextScenario = {
+        ...(existingScenario ?? {}),
+        ...draft,
+        review_cadence: [...draft.review_cadence],
+        tags: [...draft.tags],
+        current_status_seed: existingScenario?.current_status_seed ?? "watch"
+      };
+    
+      if (existingScenario) {
+        nextRecords.scenarios[existingIndex] = nextScenario;
+      } else {
+        nextRecords.scenarios.push(nextScenario);
+      }
+    
+      return {
+        ok: true,
+        errors: [],
+        draft,
+        scenario: nextScenario,
+        records: nextRecords,
+        outcome: existingScenario ? "updated" : "created"
+      };
+    }
+    
+    return {
+      "scenarioFormOptions": scenarioFormOptions,
+      "cloneRecords": cloneRecords,
+      "createEmptyScenarioDraft": createEmptyScenarioDraft,
+      "scenarioToDraft": scenarioToDraft,
+      "normalizeScenarioDraftInput": normalizeScenarioDraftInput,
+      "upsertScenarioRecords": upsertScenarioRecords
+    };
+  },
   "src/lib/scenarioViews.js": function(requireModule) {
     const { buildPriceGateSummary, compareAscWithNulls, compareDesc, isDue } = requireModule("src/lib/formatters.js");
     function byScenario(records, scenarioId, field) {
@@ -526,20 +811,101 @@
     };
   },
   "src/pages/detail.js": function(requireModule) {
-    const { prototypeRecords } = requireModule("src/data/sampleRecords.js");
+    const { loadRecords, upsertScenarioInStore } = requireModule("src/lib/browserRecordStore.js");
+    const { createEmptyScenarioDraft, scenarioToDraft } = requireModule("src/lib/scenarioDraft.js");
     const { getScenarioDetail } = requireModule("src/lib/scenarioViews.js");
     const { renderDetailPage } = requireModule("src/render/detailPage.js");
     const app = document.querySelector("#app");
-    const params = new URLSearchParams(window.location.search);
-    const scenarioId = params.get("scenario") ?? prototypeRecords.scenarios[0]?.scenario_id ?? "";
-    const detail = getScenarioDetail(prototypeRecords, scenarioId, prototypeRecords.prototypeClock);
+    const pageState = {
+      draft: null,
+      errors: []
+    };
     
-    app.innerHTML = renderDetailPage(detail);
+    function getMode() {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get("mode");
+      return mode === "new" || mode === "edit" ? mode : "view";
+    }
+    
+    function buildRawScenarioInput(formData) {
+      return {
+        scenario_id: formData.get("scenario_id"),
+        market: formData.get("market"),
+        direction: formData.get("direction"),
+        scenario_summary: formData.get("scenario_summary"),
+        horizon_bucket: formData.get("horizon_bucket"),
+        entry_window: formData.get("entry_window"),
+        observation_trigger: formData.get("observation_trigger"),
+        flow_chain: formData.get("flow_chain"),
+        price_gate_policy: formData.get("price_gate_policy"),
+        invalidation_rule: formData.get("invalidation_rule"),
+        review_cadence: formData.getAll("review_cadence"),
+        tags: formData.get("tags"),
+        notes: formData.get("notes")
+      };
+    }
+    
+    function bindScenarioForm() {
+      const form = document.querySelector("[data-scenario-form]");
+      if (!form) {
+        return;
+      }
+    
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+    
+        const result = upsertScenarioInStore(buildRawScenarioInput(new FormData(form)));
+        if (!result.ok) {
+          pageState.draft = result.draft;
+          pageState.errors = result.errors;
+          render();
+          return;
+        }
+    
+        pageState.draft = null;
+        pageState.errors = [];
+    
+        if (getMode() === "new") {
+          window.location.assign("./index.html");
+          return;
+        }
+    
+        window.location.assign(`./detail.html?scenario=${encodeURIComponent(result.scenario.scenario_id)}`);
+      });
+    }
+    
+    function render() {
+      const records = loadRecords();
+      const params = new URLSearchParams(window.location.search);
+      const mode = getMode();
+      const fallbackScenarioId = records.scenarios[0]?.scenario_id ?? "";
+      const scenarioId = params.get("scenario") ?? fallbackScenarioId;
+      const detail = mode === "new" ? null : getScenarioDetail(records, scenarioId, records.prototypeClock);
+      const draft =
+        pageState.draft ??
+        (mode === "new"
+          ? createEmptyScenarioDraft()
+          : detail
+            ? scenarioToDraft(detail.scenario)
+            : createEmptyScenarioDraft());
+    
+      app.innerHTML = renderDetailPage({
+        detail,
+        mode,
+        draft,
+        errors: pageState.errors
+      });
+    
+      bindScenarioForm();
+    }
+    
+    render();
     
     return {};
   },
   "src/render/detailPage.js": function(requireModule) {
     const { escapeHtml, formatGateStatus, formatList, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { renderScenarioForm } = requireModule("src/render/scenarioForm.js");
     function renderSignals(signals) {
       if (!signals || signals.length === 0) {
         return '<span class="signal-pill">none</span>';
@@ -622,96 +988,336 @@
         : '<p class="empty-state">No status events recorded yet.</p>';
     }
     
-    function renderDetailPage(detail) {
-      if (!detail) {
-        return `
-          <main class="detail-shell">
-            <section class="panel detail-panel missing-message">
-              <h1>Scenario not found</h1>
-              <p class="panel-copy">Use the home screen to open an existing scenario detail.</p>
-              <a class="back-link" href="./index.html">Back Home</a>
-            </section>
-          </main>
-        `;
-      }
-    
-      const latestPriceGate = detail.priceGates[0] ?? null;
-    
+    function renderMissingMessage() {
       return `
         <main class="detail-shell">
+          <section class="panel detail-panel missing-message">
+            <h1>Scenario not found</h1>
+            <p class="panel-copy">Use the home screen to open an existing scenario detail, or start a new stable thesis record.</p>
+            <div class="action-row centered-row">
+              <a class="back-link" href="./index.html">Back Home</a>
+              <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
+            </div>
+          </section>
+        </main>
+      `;
+    }
+    
+    function renderHeader({ detail, mode }) {
+      if (mode === "new") {
+        return `
           <section class="panel detail-header">
             <div class="detail-heading-row">
               <div class="detail-title">
                 <a class="back-link" href="./index.html">Back Home</a>
-                <p class="eyebrow">Scenario Detail</p>
-                <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
-                <p>${escapeHtml(detail.scenario.scenario_summary)}</p>
+                <p class="eyebrow">Scenario Form</p>
+                <h1>Create Scenario</h1>
+                <p>Stable thesis fields live here first. Review records remain append-only and will land in the next backlog.</p>
               </div>
               <div class="detail-actions">
-                <a class="action primary" href="./index.html#entry-surfaces">Edit Scenario</a>
-                <a class="action ghost" href="./index.html#entry-surfaces">Add Daily Review</a>
+                <a class="action ghost" href="./index.html">Cancel</a>
               </div>
             </div>
-            <div class="headline-meta">
-              <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
-              <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+          </section>
+        `;
+      }
+    
+      const editHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}&mode=edit`;
+      const cancelHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`;
+      const isEditMode = mode === "edit";
+    
+      return `
+        <section class="panel detail-header">
+          <div class="detail-heading-row">
+            <div class="detail-title">
+              <a class="back-link" href="./index.html">Back Home</a>
+              <p class="eyebrow">${isEditMode ? "Scenario Edit" : "Scenario Detail"}</p>
+              <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
+              <p>${escapeHtml(
+                isEditMode
+                  ? "Update stable thesis fields without touching review history."
+                  : detail.scenario.scenario_summary
+              )}</p>
             </div>
-          </section>
-    
-          <section class="panel detail-panel">
-            <h2 class="section-title">Scenario Thesis</h2>
-            <p class="section-copy">Stable fields stay separate from daily review records.</p>
-            <div class="thesis-grid">
-              <div class="kv-item"><dt>market</dt><dd>${escapeHtml(detail.scenario.market)}</dd></div>
-              <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(detail.scenario.direction)}</dd></div>
-              <div class="kv-item"><dt>horizon_bucket</dt><dd>${escapeHtml(detail.scenario.horizon_bucket)}</dd></div>
-              <div class="kv-item"><dt>entry_window</dt><dd>${escapeHtml(detail.scenario.entry_window)}</dd></div>
-              <div class="kv-item"><dt>observation_trigger</dt><dd>${escapeHtml(detail.scenario.observation_trigger)}</dd></div>
-              <div class="kv-item"><dt>flow_chain</dt><dd>${escapeHtml(detail.scenario.flow_chain)}</dd></div>
-              <div class="kv-item"><dt>invalidation_rule</dt><dd>${escapeHtml(detail.scenario.invalidation_rule)}</dd></div>
-              <div class="kv-item"><dt>review_cadence</dt><dd>${escapeHtml(formatList(detail.scenario.review_cadence))}</dd></div>
-              <div class="kv-item"><dt>tags</dt><dd>${escapeHtml(formatList(detail.scenario.tags))}</dd></div>
+            <div class="detail-actions">
+              ${
+                isEditMode
+                  ? `<a class="action ghost" href="${cancelHref}">Cancel</a>`
+                  : `
+                    <a class="action primary" href="${editHref}">Edit Scenario</a>
+                    <a class="action ghost" href="./index.html#entry-surfaces">Add Daily Review</a>
+                  `
+              }
             </div>
+          </div>
+          <div class="headline-meta">
+            <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
+            <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+          </div>
+        </section>
+      `;
+    }
+    
+    function renderScenarioSections(detail) {
+      const latestPriceGate = detail.priceGates[0] ?? null;
+    
+      return `
+        <section class="panel detail-panel">
+          <h2 class="section-title">Scenario Thesis</h2>
+          <p class="section-copy">Stable fields stay separate from daily review records.</p>
+          <div class="thesis-grid">
+            <div class="kv-item"><dt>market</dt><dd>${escapeHtml(detail.scenario.market)}</dd></div>
+            <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(detail.scenario.direction)}</dd></div>
+            <div class="kv-item"><dt>horizon_bucket</dt><dd>${escapeHtml(detail.scenario.horizon_bucket)}</dd></div>
+            <div class="kv-item"><dt>entry_window</dt><dd>${escapeHtml(detail.scenario.entry_window)}</dd></div>
+            <div class="kv-item"><dt>observation_trigger</dt><dd>${escapeHtml(detail.scenario.observation_trigger)}</dd></div>
+            <div class="kv-item"><dt>flow_chain</dt><dd>${escapeHtml(detail.scenario.flow_chain)}</dd></div>
+            <div class="kv-item"><dt>invalidation_rule</dt><dd>${escapeHtml(detail.scenario.invalidation_rule)}</dd></div>
+            <div class="kv-item"><dt>review_cadence</dt><dd>${escapeHtml(formatList(detail.scenario.review_cadence))}</dd></div>
+            <div class="kv-item"><dt>tags</dt><dd>${escapeHtml(formatList(detail.scenario.tags))}</dd></div>
+            <div class="kv-item"><dt>notes</dt><dd>${escapeHtml(detail.scenario.notes || "none")}</dd></div>
+          </div>
+        </section>
+    
+        <section class="panel detail-panel">
+          <h2 class="section-title">Current View</h2>
+          <p class="section-copy">Derived fields come from the latest status event, observation snapshot, and price gate.</p>
+          <div class="current-grid">
+            <div class="kv-item"><dt>latest_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.latest_snapshot_at))}</dd></div>
+            <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.latest_trigger_state))}</dd></div>
+            <div class="kv-item"><dt>latest_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.latest_price_gate))}</dd></div>
+            <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(detail.currentView.latest_reason_code)}</dd></div>
+            <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(detail.currentView.latest_reason_detail || "none")}</dd></div>
+            <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
+          </div>
+        </section>
+    
+        <section class="detail-grid">
+          <section class="panel detail-panel muted">
+            <h2 class="section-title">Observation Timeline</h2>
+            <p class="section-copy">Latest snapshots first so the present thesis state is visible at a glance.</p>
+            ${renderObservationTimeline(detail.snapshots)}
           </section>
     
-          <section class="panel detail-panel">
-            <h2 class="section-title">Current View</h2>
-            <p class="section-copy">Derived fields come from the latest status event, observation snapshot, and price gate.</p>
-            <div class="current-grid">
-              <div class="kv-item"><dt>latest_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.latest_snapshot_at))}</dd></div>
-              <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.latest_trigger_state))}</dd></div>
-              <div class="kv-item"><dt>latest_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.latest_price_gate))}</dd></div>
-              <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(detail.currentView.latest_reason_code)}</dd></div>
-              <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(detail.currentView.latest_reason_detail || "none")}</dd></div>
-              <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
-            </div>
+          <section class="panel detail-panel muted">
+            <h2 class="section-title">Price Gate</h2>
+            <p class="section-copy">The latest gate stays isolated from the thesis so rejected and invalidated cases do not blur together.</p>
+            ${renderPriceGate(latestPriceGate)}
           </section>
+        </section>
     
-          <section class="detail-grid">
-            <section class="panel detail-panel muted">
-              <h2 class="section-title">Observation Timeline</h2>
-              <p class="section-copy">Latest snapshots first so the present thesis state is visible at a glance.</p>
-              ${renderObservationTimeline(detail.snapshots)}
-            </section>
+        <section class="panel detail-panel">
+          <h2 class="section-title">Status History</h2>
+          <p class="section-copy">Reason codes stay explicit so price gate failures never look like thesis breakage.</p>
+          ${renderStatusHistory(detail.statusEvents)}
+        </section>
+      `;
+    }
     
-            <section class="panel detail-panel muted">
-              <h2 class="section-title">Price Gate</h2>
-              <p class="section-copy">The latest gate stays isolated from the thesis so rejected and invalidated cases do not blur together.</p>
-              ${renderPriceGate(latestPriceGate)}
-            </section>
-          </section>
+    function renderDetailPage({ detail, mode, draft, errors }) {
+      if (!detail && mode !== "new") {
+        return renderMissingMessage();
+      }
     
-          <section class="panel detail-panel">
-            <h2 class="section-title">Status History</h2>
-            <p class="section-copy">Reason codes stay explicit so price gate failures never look like thesis breakage.</p>
-            ${renderStatusHistory(detail.statusEvents)}
-          </section>
+      const formMarkup =
+        mode === "new" || mode === "edit"
+          ? renderScenarioForm({
+              draft,
+              errors,
+              mode,
+              cancelHref:
+                mode === "edit" && detail
+                  ? `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`
+                  : "./index.html"
+            })
+          : "";
+    
+      return `
+        <main class="detail-shell">
+          ${renderHeader({ detail, mode })}
+          ${formMarkup}
+          ${detail ? renderScenarioSections(detail) : ""}
         </main>
       `;
     }
     
     return {
       "renderDetailPage": renderDetailPage
+    };
+  },
+  "src/render/scenarioForm.js": function(requireModule) {
+    const { escapeHtml, formatPhase } = requireModule("src/lib/formatters.js");
+    const { scenarioFormOptions } = requireModule("src/lib/scenarioDraft.js");
+    const optionLabels = {
+      nikkei225: "Nikkei 225",
+      downside: "Downside",
+      upside: "Upside",
+      "1d_2w": "1d to 2w",
+      same_day: "Same Day",
+      same_week: "Same Week",
+      next_3_sessions: "Next 3 Sessions",
+      next_5_sessions: "Next 5 Sessions",
+      standard_min_gate: "Standard Min Gate",
+      event_guarded_gate: "Event Guarded Gate"
+    };
+    
+    function formatOptionLabel(value) {
+      return optionLabels[value] ?? value;
+    }
+    
+    function renderSelectOptions(options, selectedValue) {
+      return options
+        .map((value) => {
+          const isSelected = value === selectedValue ? ' selected="selected"' : "";
+          return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(formatOptionLabel(value))}</option>`;
+        })
+        .join("");
+    }
+    
+    function renderCadenceOptions(selectedValues) {
+      return scenarioFormOptions.reviewCadences
+        .map((value) => {
+          const isChecked = selectedValues.includes(value) ? ' checked="checked"' : "";
+          return `
+            <label class="checkbox-option">
+              <input type="checkbox" name="review_cadence" value="${escapeHtml(value)}"${isChecked} />
+              <span>${escapeHtml(formatPhase(value))}</span>
+            </label>
+          `;
+        })
+        .join("");
+    }
+    
+    function renderErrors(errors) {
+      if (!errors || errors.length === 0) {
+        return "";
+      }
+    
+      return `
+        <div class="form-errors" role="alert">
+          <p class="form-errors-title">Fix the following before saving.</p>
+          <ul class="form-error-list">
+            ${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}
+          </ul>
+        </div>
+      `;
+    }
+    
+    function renderScenarioForm({ draft, errors, mode, cancelHref }) {
+      const isEditMode = mode === "edit";
+      const formTitle = isEditMode ? "Edit Scenario" : "New Scenario";
+      const formCopy = isEditMode
+        ? "Only stable thesis fields change here. Review records stay append-only."
+        : "Create a stable thesis record first. Current status will stay on Watch until review records are added later.";
+      const submitLabel = isEditMode ? "Save Scenario" : "Create Scenario";
+      const readOnlyAttributes = isEditMode ? ' readonly="readonly" aria-readonly="true"' : "";
+      const tagsValue = escapeHtml(draft.tags.join(", "));
+    
+      return `
+        <section class="panel detail-panel form-panel">
+          <div class="form-shell">
+            <div>
+              <h2 class="section-title">${formTitle}</h2>
+              <p class="section-copy">${formCopy}</p>
+            </div>
+            <div class="detail-actions">
+              <a class="action ghost" href="${cancelHref}">Cancel</a>
+            </div>
+          </div>
+          ${renderErrors(errors)}
+          <form class="scenario-form" data-scenario-form novalidate>
+            <div class="form-grid">
+              <label class="field">
+                <span>scenario_id</span>
+                <input type="text" name="scenario_id" value="${escapeHtml(draft.scenario_id)}"${readOnlyAttributes} placeholder="NKY-D-005" />
+                <small class="field-hint">${isEditMode ? "Scenario ID is fixed during edit." : "Duplicate IDs update the existing scenario."}</small>
+              </label>
+    
+              <label class="field">
+                <span>market</span>
+                <select name="market">
+                  ${renderSelectOptions(scenarioFormOptions.markets, draft.market)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>direction</span>
+                <select name="direction">
+                  ${renderSelectOptions(scenarioFormOptions.directions, draft.direction)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>horizon_bucket</span>
+                <select name="horizon_bucket">
+                  ${renderSelectOptions(scenarioFormOptions.horizonBuckets, draft.horizon_bucket)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>entry_window</span>
+                <select name="entry_window">
+                  ${renderSelectOptions(scenarioFormOptions.entryWindows, draft.entry_window)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>price_gate_policy</span>
+                <select name="price_gate_policy">
+                  ${renderSelectOptions(scenarioFormOptions.priceGatePolicies, draft.price_gate_policy)}
+                </select>
+              </label>
+    
+              <label class="field field-wide">
+                <span>scenario_summary</span>
+                <textarea name="scenario_summary" rows="2" placeholder="us_rates_reprice_and_yen_strength_pressure_nikkei">${escapeHtml(draft.scenario_summary)}</textarea>
+              </label>
+    
+              <label class="field field-wide">
+                <span>observation_trigger</span>
+                <textarea name="observation_trigger" rows="3" placeholder="usd_jpy_breaks_prior_day_low_and_nky_futures_fail_rebound">${escapeHtml(draft.observation_trigger)}</textarea>
+              </label>
+    
+              <label class="field field-wide">
+                <span>flow_chain</span>
+                <textarea name="flow_chain" rows="3" placeholder="us_rates_up -> yen_strength -> exporters_weaken -> index_pressure">${escapeHtml(draft.flow_chain)}</textarea>
+              </label>
+    
+              <label class="field field-wide">
+                <span>invalidation_rule</span>
+                <textarea name="invalidation_rule" rows="3" placeholder="usd_jpy_reclaims_range_or_nky_closes_above_gap">${escapeHtml(draft.invalidation_rule)}</textarea>
+              </label>
+    
+              <fieldset class="field field-wide">
+                <legend>review_cadence</legend>
+                <div class="checkbox-grid">
+                  ${renderCadenceOptions(draft.review_cadence)}
+                </div>
+              </fieldset>
+    
+              <label class="field field-wide">
+                <span>tags</span>
+                <input type="text" name="tags" value="${tagsValue}" placeholder="rates, yen, exporters" />
+                <small class="field-hint">Comma or semicolon separated.</small>
+              </label>
+    
+              <label class="field field-wide">
+                <span>notes</span>
+                <textarea name="notes" rows="3" placeholder="optional operator note">${escapeHtml(draft.notes)}</textarea>
+              </label>
+            </div>
+    
+            <div class="form-actions">
+              <button class="action primary" type="submit">${submitLabel}</button>
+              <a class="action ghost" href="${cancelHref}">Cancel</a>
+            </div>
+          </form>
+        </section>
+      `;
+    }
+    
+    return {
+      "renderScenarioForm": renderScenarioForm
     };
   }
   };

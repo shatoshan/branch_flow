@@ -309,6 +309,91 @@
       "prototypeRecords": prototypeRecords
     };
   },
+  "src/lib/browserRecordStore.js": function(requireModule) {
+    const { prototypeRecords } = requireModule("src/data/sampleRecords.js");
+    const { cloneRecords, upsertScenarioRecords } = requireModule("src/lib/scenarioDraft.js");
+    const browserRecordStorageKey = "branchflow.prototype-records.v1";
+    
+    function canUseLocalStorage() {
+      return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+    }
+    
+    function isValidRecordsSnapshot(records) {
+      return (
+        records &&
+        typeof records.prototypeClock === "string" &&
+        Array.isArray(records.scenarios) &&
+        Array.isArray(records.observationSnapshots) &&
+        Array.isArray(records.priceGates) &&
+        Array.isArray(records.statusEvents)
+      );
+    }
+    
+    function clonePrototypeRecords() {
+      return cloneRecords(prototypeRecords);
+    }
+    
+    function loadRecords() {
+      const fallbackRecords = clonePrototypeRecords();
+      if (!canUseLocalStorage()) {
+        return fallbackRecords;
+      }
+    
+      try {
+        const rawValue = window.localStorage.getItem(browserRecordStorageKey);
+        if (!rawValue) {
+          return fallbackRecords;
+        }
+    
+        const parsed = JSON.parse(rawValue);
+        return isValidRecordsSnapshot(parsed) ? parsed : fallbackRecords;
+      } catch (error) {
+        console.warn("loadRecords failed; falling back to prototype seed", error);
+        return fallbackRecords;
+      }
+    }
+    
+    function saveRecords(records) {
+      const snapshot = cloneRecords(records);
+      if (!canUseLocalStorage()) {
+        return snapshot;
+      }
+    
+      try {
+        window.localStorage.setItem(browserRecordStorageKey, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn("saveRecords failed", error);
+      }
+    
+      return snapshot;
+    }
+    
+    function upsertScenarioInStore(rawInput) {
+      const records = loadRecords();
+      const result = upsertScenarioRecords(records, rawInput);
+      if (!result.ok) {
+        return result;
+      }
+    
+      const savedRecords = saveRecords(result.records);
+      const savedScenario =
+        savedRecords.scenarios.find((scenario) => scenario.scenario_id === result.scenario.scenario_id) ?? result.scenario;
+    
+      return {
+        ...result,
+        records: savedRecords,
+        scenario: savedScenario
+      };
+    }
+    
+    return {
+      "browserRecordStorageKey": browserRecordStorageKey,
+      "clonePrototypeRecords": clonePrototypeRecords,
+      "loadRecords": loadRecords,
+      "saveRecords": saveRecords,
+      "upsertScenarioInStore": upsertScenarioInStore
+    };
+  },
   "src/lib/formatters.js": function(requireModule) {
     const statusLabels = {
       watch: "Watch",
@@ -440,6 +525,206 @@
       "compareDesc": compareDesc
     };
   },
+  "src/lib/scenarioDraft.js": function(requireModule) {
+    const scenarioFormOptions = {
+      markets: ["nikkei225"],
+      directions: ["downside", "upside"],
+      horizonBuckets: ["1d_2w"],
+      entryWindows: ["same_day", "same_week", "next_3_sessions", "next_5_sessions"],
+      priceGatePolicies: ["standard_min_gate", "event_guarded_gate"],
+      reviewCadences: ["morning", "intraday", "after_close", "weekly"]
+    };
+    
+    const requiredTextFields = [
+      "scenario_id",
+      "market",
+      "direction",
+      "scenario_summary",
+      "horizon_bucket",
+      "entry_window",
+      "observation_trigger",
+      "flow_chain",
+      "price_gate_policy",
+      "invalidation_rule"
+    ];
+    
+    function normalizeText(value) {
+      return String(value ?? "").trim();
+    }
+    
+    function dedupePreservingOrder(values) {
+      const seen = new Set();
+      const deduped = [];
+    
+      for (const value of values) {
+        if (!value || seen.has(value)) {
+          continue;
+        }
+    
+        seen.add(value);
+        deduped.push(value);
+      }
+    
+      return deduped;
+    }
+    
+    function normalizeReviewCadence(values) {
+      const rawValues = Array.isArray(values) ? values : [values];
+      const normalized = dedupePreservingOrder(rawValues.map((value) => normalizeText(value)));
+      return scenarioFormOptions.reviewCadences.filter((cadence) => normalized.includes(cadence));
+    }
+    
+    function normalizeTags(values) {
+      if (Array.isArray(values)) {
+        return dedupePreservingOrder(values.map((value) => normalizeText(value)));
+      }
+    
+      return dedupePreservingOrder(
+        normalizeText(values)
+          .split(/[;,]/)
+          .map((value) => value.trim())
+      );
+    }
+    
+    function buildDraft(rawInput) {
+      return {
+        scenario_id: normalizeText(rawInput.scenario_id),
+        market: normalizeText(rawInput.market),
+        direction: normalizeText(rawInput.direction),
+        scenario_summary: normalizeText(rawInput.scenario_summary),
+        horizon_bucket: normalizeText(rawInput.horizon_bucket),
+        entry_window: normalizeText(rawInput.entry_window),
+        observation_trigger: normalizeText(rawInput.observation_trigger),
+        flow_chain: normalizeText(rawInput.flow_chain),
+        price_gate_policy: normalizeText(rawInput.price_gate_policy),
+        invalidation_rule: normalizeText(rawInput.invalidation_rule),
+        review_cadence: normalizeReviewCadence(rawInput.review_cadence),
+        tags: normalizeTags(rawInput.tags),
+        notes: normalizeText(rawInput.notes)
+      };
+    }
+    
+    function pushRequiredFieldErrors(draft, errors) {
+      for (const field of requiredTextFields) {
+        if (!draft[field]) {
+          errors.push(`${field} is required`);
+        }
+      }
+    }
+    
+    function pushEnumError(field, value, allowedValues, errors) {
+      if (!allowedValues.includes(value)) {
+        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+      }
+    }
+    
+    function cloneRecords(records) {
+      return JSON.parse(JSON.stringify(records));
+    }
+    
+    function createEmptyScenarioDraft() {
+      return {
+        scenario_id: "",
+        market: scenarioFormOptions.markets[0],
+        direction: scenarioFormOptions.directions[0],
+        scenario_summary: "",
+        horizon_bucket: scenarioFormOptions.horizonBuckets[0],
+        entry_window: scenarioFormOptions.entryWindows[3],
+        observation_trigger: "",
+        flow_chain: "",
+        price_gate_policy: scenarioFormOptions.priceGatePolicies[0],
+        invalidation_rule: "",
+        review_cadence: ["morning", "intraday", "after_close"],
+        tags: [],
+        notes: ""
+      };
+    }
+    
+    function scenarioToDraft(scenario) {
+      return {
+        scenario_id: scenario.scenario_id,
+        market: scenario.market,
+        direction: scenario.direction,
+        scenario_summary: scenario.scenario_summary,
+        horizon_bucket: scenario.horizon_bucket,
+        entry_window: scenario.entry_window,
+        observation_trigger: scenario.observation_trigger,
+        flow_chain: scenario.flow_chain,
+        price_gate_policy: scenario.price_gate_policy,
+        invalidation_rule: scenario.invalidation_rule,
+        review_cadence: [...scenario.review_cadence],
+        tags: [...scenario.tags],
+        notes: scenario.notes ?? ""
+      };
+    }
+    
+    function normalizeScenarioDraftInput(rawInput) {
+      const draft = buildDraft(rawInput);
+      const errors = [];
+    
+      pushRequiredFieldErrors(draft, errors);
+      pushEnumError("market", draft.market, scenarioFormOptions.markets, errors);
+      pushEnumError("direction", draft.direction, scenarioFormOptions.directions, errors);
+      pushEnumError("horizon_bucket", draft.horizon_bucket, scenarioFormOptions.horizonBuckets, errors);
+      pushEnumError("entry_window", draft.entry_window, scenarioFormOptions.entryWindows, errors);
+      pushEnumError("price_gate_policy", draft.price_gate_policy, scenarioFormOptions.priceGatePolicies, errors);
+    
+      if (draft.review_cadence.length === 0) {
+        errors.push("review_cadence requires at least one selection");
+      }
+    
+      return {
+        draft,
+        errors
+      };
+    }
+    
+    function upsertScenarioRecords(records, rawInput) {
+      const { draft, errors } = normalizeScenarioDraftInput(rawInput);
+      if (errors.length > 0) {
+        return {
+          ok: false,
+          errors,
+          draft
+        };
+      }
+    
+      const nextRecords = cloneRecords(records);
+      const existingIndex = nextRecords.scenarios.findIndex((scenario) => scenario.scenario_id === draft.scenario_id);
+      const existingScenario = existingIndex >= 0 ? nextRecords.scenarios[existingIndex] : null;
+      const nextScenario = {
+        ...(existingScenario ?? {}),
+        ...draft,
+        review_cadence: [...draft.review_cadence],
+        tags: [...draft.tags],
+        current_status_seed: existingScenario?.current_status_seed ?? "watch"
+      };
+    
+      if (existingScenario) {
+        nextRecords.scenarios[existingIndex] = nextScenario;
+      } else {
+        nextRecords.scenarios.push(nextScenario);
+      }
+    
+      return {
+        ok: true,
+        errors: [],
+        draft,
+        scenario: nextScenario,
+        records: nextRecords,
+        outcome: existingScenario ? "updated" : "created"
+      };
+    }
+    
+    return {
+      "scenarioFormOptions": scenarioFormOptions,
+      "cloneRecords": cloneRecords,
+      "createEmptyScenarioDraft": createEmptyScenarioDraft,
+      "scenarioToDraft": scenarioToDraft,
+      "normalizeScenarioDraftInput": normalizeScenarioDraftInput,
+      "upsertScenarioRecords": upsertScenarioRecords
+    };
+  },
   "src/lib/scenarioViews.js": function(requireModule) {
     const { buildPriceGateSummary, compareAscWithNulls, compareDesc, isDue } = requireModule("src/lib/formatters.js");
     function byScenario(records, scenarioId, field) {
@@ -526,7 +811,7 @@
     };
   },
   "src/pages/home.js": function(requireModule) {
-    const { prototypeRecords } = requireModule("src/data/sampleRecords.js");
+    const { loadRecords } = requireModule("src/lib/browserRecordStore.js");
     const { buildScenarioCurrentViews } = requireModule("src/lib/scenarioViews.js");
     const { renderHomePage } = requireModule("src/render/homePage.js");
     const app = document.querySelector("#app");
@@ -558,10 +843,11 @@
     
     function render() {
       const dueOnly = getDueOnly();
-      const views = buildScenarioCurrentViews(prototypeRecords, prototypeRecords.prototypeClock);
+      const records = loadRecords();
+      const views = buildScenarioCurrentViews(records, records.prototypeClock);
       app.innerHTML = renderHomePage({
         views,
-        asOf: prototypeRecords.prototypeClock,
+        asOf: records.prototypeClock,
         dueOnly
       });
     
@@ -573,7 +859,7 @@
     return {};
   },
   "src/render/homePage.js": function(requireModule) {
-    const { escapeHtml, formatList, formatStatus, formatTimestamp } = requireModule("src/lib/formatters.js");
+    const { escapeHtml, formatStatus, formatTimestamp } = requireModule("src/lib/formatters.js");
     const statusOrder = ["watch", "eligible", "rejected", "invalidated"];
     
     function groupByStatus(views) {
@@ -637,7 +923,7 @@
               <div>
                 <p class="eyebrow">BranchFlow Prototype</p>
                 <h1>Conditional option-buying terminal</h1>
-                <p>Forecasts are out of scope. This read-only skeleton keeps manual-first scenario review visible through the current view, latest reason code, and due timing.</p>
+                <p>Forecasts are out of scope. Stable thesis records now persist in the browser, while review events stay split into the next append-only backlog.</p>
               </div>
               <div class="timestamp">As of ${escapeHtml(formatTimestamp(asOf))}</div>
             </div>
@@ -646,7 +932,7 @@
           <section class="panel toolbar">
             <div class="toolbar-row">
               <div class="action-row">
-                <a class="action primary" href="#entry-surfaces">New Scenario</a>
+                <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
                 <a class="action ghost" href="#entry-surfaces">Daily Review</a>
               </div>
               <div class="action-row">
@@ -667,18 +953,18 @@
     
           <section id="entry-surfaces" class="entry-grid">
             <section class="panel entry-panel">
-              <h2 class="section-title">Scenario Form Split</h2>
-              <p class="section-copy">Next build target: stable thesis fields stay separate from per-review updates.</p>
+              <h2 class="section-title">Scenario Form</h2>
+              <p class="section-copy">Live now: detail.html owns stable thesis create/edit, backed by a shared browser record store.</p>
               <ul class="summary-list">
-                <li><strong>Fixed thesis:</strong> market, direction, horizon, observation trigger, flow chain, invalidation rule</li>
-                <li><strong>Read path owner:</strong> scenario and scenario_current_view</li>
-                <li><strong>Seed tags:</strong> ${escapeHtml(formatList(["rates", "gap", "event", "support"]))}</li>
+                <li><strong>Saved fields:</strong> market, direction, summary, horizon, trigger, flow, invalidation, cadence, tags, notes</li>
+                <li><strong>Open path:</strong> New Scenario on home, Edit Scenario on detail</li>
+                <li><strong>Persistence:</strong> localStorage snapshot shared across home/detail</li>
               </ul>
             </section>
     
             <section class="panel entry-panel">
               <h2 class="section-title">Daily Review Split</h2>
-              <p class="section-copy">Per-review records stay append-only and keep rejected vs invalidated reasons separable.</p>
+              <p class="section-copy">Next backlog: per-review records stay append-only and keep rejected vs invalidated reasons separable.</p>
               <ul class="summary-list">
                 <li><strong>Observation:</strong> snapshot, session phase, trigger state, observed signals</li>
                 <li><strong>Price gate:</strong> overall gate, fail reason codes, budget / IV checks</li>

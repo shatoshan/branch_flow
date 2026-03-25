@@ -384,6 +384,10 @@ button {
   padding: 1.2rem;
 }
 
+.centered-row {
+  justify-content: center;
+}
+
 .entry-panel ul,
 .summary-list,
 .timeline,
@@ -441,6 +445,125 @@ button {
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
+}
+
+.form-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.form-shell {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.scenario-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.field span,
+.field legend {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(19, 32, 51, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 6.2rem;
+}
+
+.field input[readonly] {
+  background: rgba(19, 32, 51, 0.06);
+  color: var(--muted);
+}
+
+fieldset.field {
+  border: 1px solid rgba(19, 32, 51, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.checkbox-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(19, 32, 51, 0.06);
+  border: 1px solid rgba(19, 32, 51, 0.08);
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.form-errors {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(170, 88, 51, 0.12);
+  border: 1px solid rgba(170, 88, 51, 0.2);
+}
+
+.form-errors-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.form-error-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.form-error-list li + li {
+  margin-top: 0.25rem;
 }
 
 .headline-meta {

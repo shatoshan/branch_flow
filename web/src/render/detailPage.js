@@ -7,6 +7,7 @@ import {
   formatTimestamp,
   formatTriggerState
 } from "../lib/formatters.js";
+import { renderScenarioForm } from "./scenarioForm.js";
 
 function renderSignals(signals) {
   if (!signals || signals.length === 0) {
@@ -90,90 +91,155 @@ function renderStatusHistory(statusEvents) {
     : '<p class="empty-state">No status events recorded yet.</p>';
 }
 
-export function renderDetailPage(detail) {
-  if (!detail) {
-    return `
-      <main class="detail-shell">
-        <section class="panel detail-panel missing-message">
-          <h1>Scenario not found</h1>
-          <p class="panel-copy">Use the home screen to open an existing scenario detail.</p>
-          <a class="back-link" href="./index.html">Back Home</a>
-        </section>
-      </main>
-    `;
-  }
-
-  const latestPriceGate = detail.priceGates[0] ?? null;
-
+function renderMissingMessage() {
   return `
     <main class="detail-shell">
+      <section class="panel detail-panel missing-message">
+        <h1>Scenario not found</h1>
+        <p class="panel-copy">Use the home screen to open an existing scenario detail, or start a new stable thesis record.</p>
+        <div class="action-row centered-row">
+          <a class="back-link" href="./index.html">Back Home</a>
+          <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function renderHeader({ detail, mode }) {
+  if (mode === "new") {
+    return `
       <section class="panel detail-header">
         <div class="detail-heading-row">
           <div class="detail-title">
             <a class="back-link" href="./index.html">Back Home</a>
-            <p class="eyebrow">Scenario Detail</p>
-            <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
-            <p>${escapeHtml(detail.scenario.scenario_summary)}</p>
+            <p class="eyebrow">Scenario Form</p>
+            <h1>Create Scenario</h1>
+            <p>Stable thesis fields live here first. Review records remain append-only and will land in the next backlog.</p>
           </div>
           <div class="detail-actions">
-            <a class="action primary" href="./index.html#entry-surfaces">Edit Scenario</a>
-            <a class="action ghost" href="./index.html#entry-surfaces">Add Daily Review</a>
+            <a class="action ghost" href="./index.html">Cancel</a>
           </div>
         </div>
-        <div class="headline-meta">
-          <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
-          <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+      </section>
+    `;
+  }
+
+  const editHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}&mode=edit`;
+  const cancelHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`;
+  const isEditMode = mode === "edit";
+
+  return `
+    <section class="panel detail-header">
+      <div class="detail-heading-row">
+        <div class="detail-title">
+          <a class="back-link" href="./index.html">Back Home</a>
+          <p class="eyebrow">${isEditMode ? "Scenario Edit" : "Scenario Detail"}</p>
+          <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
+          <p>${escapeHtml(
+            isEditMode
+              ? "Update stable thesis fields without touching review history."
+              : detail.scenario.scenario_summary
+          )}</p>
         </div>
-      </section>
-
-      <section class="panel detail-panel">
-        <h2 class="section-title">Scenario Thesis</h2>
-        <p class="section-copy">Stable fields stay separate from daily review records.</p>
-        <div class="thesis-grid">
-          <div class="kv-item"><dt>market</dt><dd>${escapeHtml(detail.scenario.market)}</dd></div>
-          <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(detail.scenario.direction)}</dd></div>
-          <div class="kv-item"><dt>horizon_bucket</dt><dd>${escapeHtml(detail.scenario.horizon_bucket)}</dd></div>
-          <div class="kv-item"><dt>entry_window</dt><dd>${escapeHtml(detail.scenario.entry_window)}</dd></div>
-          <div class="kv-item"><dt>observation_trigger</dt><dd>${escapeHtml(detail.scenario.observation_trigger)}</dd></div>
-          <div class="kv-item"><dt>flow_chain</dt><dd>${escapeHtml(detail.scenario.flow_chain)}</dd></div>
-          <div class="kv-item"><dt>invalidation_rule</dt><dd>${escapeHtml(detail.scenario.invalidation_rule)}</dd></div>
-          <div class="kv-item"><dt>review_cadence</dt><dd>${escapeHtml(formatList(detail.scenario.review_cadence))}</dd></div>
-          <div class="kv-item"><dt>tags</dt><dd>${escapeHtml(formatList(detail.scenario.tags))}</dd></div>
+        <div class="detail-actions">
+          ${
+            isEditMode
+              ? `<a class="action ghost" href="${cancelHref}">Cancel</a>`
+              : `
+                <a class="action primary" href="${editHref}">Edit Scenario</a>
+                <a class="action ghost" href="./index.html#entry-surfaces">Add Daily Review</a>
+              `
+          }
         </div>
+      </div>
+      <div class="headline-meta">
+        <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
+        <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderScenarioSections(detail) {
+  const latestPriceGate = detail.priceGates[0] ?? null;
+
+  return `
+    <section class="panel detail-panel">
+      <h2 class="section-title">Scenario Thesis</h2>
+      <p class="section-copy">Stable fields stay separate from daily review records.</p>
+      <div class="thesis-grid">
+        <div class="kv-item"><dt>market</dt><dd>${escapeHtml(detail.scenario.market)}</dd></div>
+        <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(detail.scenario.direction)}</dd></div>
+        <div class="kv-item"><dt>horizon_bucket</dt><dd>${escapeHtml(detail.scenario.horizon_bucket)}</dd></div>
+        <div class="kv-item"><dt>entry_window</dt><dd>${escapeHtml(detail.scenario.entry_window)}</dd></div>
+        <div class="kv-item"><dt>observation_trigger</dt><dd>${escapeHtml(detail.scenario.observation_trigger)}</dd></div>
+        <div class="kv-item"><dt>flow_chain</dt><dd>${escapeHtml(detail.scenario.flow_chain)}</dd></div>
+        <div class="kv-item"><dt>invalidation_rule</dt><dd>${escapeHtml(detail.scenario.invalidation_rule)}</dd></div>
+        <div class="kv-item"><dt>review_cadence</dt><dd>${escapeHtml(formatList(detail.scenario.review_cadence))}</dd></div>
+        <div class="kv-item"><dt>tags</dt><dd>${escapeHtml(formatList(detail.scenario.tags))}</dd></div>
+        <div class="kv-item"><dt>notes</dt><dd>${escapeHtml(detail.scenario.notes || "none")}</dd></div>
+      </div>
+    </section>
+
+    <section class="panel detail-panel">
+      <h2 class="section-title">Current View</h2>
+      <p class="section-copy">Derived fields come from the latest status event, observation snapshot, and price gate.</p>
+      <div class="current-grid">
+        <div class="kv-item"><dt>latest_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.latest_snapshot_at))}</dd></div>
+        <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.latest_trigger_state))}</dd></div>
+        <div class="kv-item"><dt>latest_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.latest_price_gate))}</dd></div>
+        <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(detail.currentView.latest_reason_code)}</dd></div>
+        <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(detail.currentView.latest_reason_detail || "none")}</dd></div>
+        <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
+      </div>
+    </section>
+
+    <section class="detail-grid">
+      <section class="panel detail-panel muted">
+        <h2 class="section-title">Observation Timeline</h2>
+        <p class="section-copy">Latest snapshots first so the present thesis state is visible at a glance.</p>
+        ${renderObservationTimeline(detail.snapshots)}
       </section>
 
-      <section class="panel detail-panel">
-        <h2 class="section-title">Current View</h2>
-        <p class="section-copy">Derived fields come from the latest status event, observation snapshot, and price gate.</p>
-        <div class="current-grid">
-          <div class="kv-item"><dt>latest_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.latest_snapshot_at))}</dd></div>
-          <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.latest_trigger_state))}</dd></div>
-          <div class="kv-item"><dt>latest_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.latest_price_gate))}</dd></div>
-          <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(detail.currentView.latest_reason_code)}</dd></div>
-          <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(detail.currentView.latest_reason_detail || "none")}</dd></div>
-          <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
-        </div>
+      <section class="panel detail-panel muted">
+        <h2 class="section-title">Price Gate</h2>
+        <p class="section-copy">The latest gate stays isolated from the thesis so rejected and invalidated cases do not blur together.</p>
+        ${renderPriceGate(latestPriceGate)}
       </section>
+    </section>
 
-      <section class="detail-grid">
-        <section class="panel detail-panel muted">
-          <h2 class="section-title">Observation Timeline</h2>
-          <p class="section-copy">Latest snapshots first so the present thesis state is visible at a glance.</p>
-          ${renderObservationTimeline(detail.snapshots)}
-        </section>
+    <section class="panel detail-panel">
+      <h2 class="section-title">Status History</h2>
+      <p class="section-copy">Reason codes stay explicit so price gate failures never look like thesis breakage.</p>
+      ${renderStatusHistory(detail.statusEvents)}
+    </section>
+  `;
+}
 
-        <section class="panel detail-panel muted">
-          <h2 class="section-title">Price Gate</h2>
-          <p class="section-copy">The latest gate stays isolated from the thesis so rejected and invalidated cases do not blur together.</p>
-          ${renderPriceGate(latestPriceGate)}
-        </section>
-      </section>
+export function renderDetailPage({ detail, mode, draft, errors }) {
+  if (!detail && mode !== "new") {
+    return renderMissingMessage();
+  }
 
-      <section class="panel detail-panel">
-        <h2 class="section-title">Status History</h2>
-        <p class="section-copy">Reason codes stay explicit so price gate failures never look like thesis breakage.</p>
-        ${renderStatusHistory(detail.statusEvents)}
-      </section>
+  const formMarkup =
+    mode === "new" || mode === "edit"
+      ? renderScenarioForm({
+          draft,
+          errors,
+          mode,
+          cancelHref:
+            mode === "edit" && detail
+              ? `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`
+              : "./index.html"
+        })
+      : "";
+
+  return `
+    <main class="detail-shell">
+      ${renderHeader({ detail, mode })}
+      ${formMarkup}
+      ${detail ? renderScenarioSections(detail) : ""}
     </main>
   `;
 }
