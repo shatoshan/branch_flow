@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node scripts/check.mjs",
-    "serve": "python -m http.server 4173 --directory web"
+    "build:web": "node scripts/build-web-bundle.mjs",
+    "check": "node scripts/build-web-bundle.mjs && node --check web/dist/home.bundle.js && node --check web/dist/detail.bundle.js && node scripts/check.mjs",
+    "serve": "node scripts/build-web-bundle.mjs && python -m http.server 4173 --directory web"
   }
 }
