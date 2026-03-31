@@ -1,5 +1,6 @@
 import {
   escapeHtml,
+  formatBooleanCheck,
   formatGateStatus,
   formatList,
   formatPhase,
@@ -7,6 +8,7 @@ import {
   formatTimestamp,
   formatTriggerState
 } from "../lib/formatters.js";
+import { renderDailyReviewForm } from "./dailyReviewForm.js";
 import { renderScenarioForm } from "./scenarioForm.js";
 
 function renderSignals(signals) {
@@ -35,11 +37,11 @@ function renderPriceGate(priceGate) {
         <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(priceGate.gate_note)}</dd></div>
       </div>
       <div class="kv-grid">
-        <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${String(priceGate.expiry_bucket_ok)}</dd></div>
-        <div class="kv-item"><dt>spread_ok</dt><dd>${String(priceGate.spread_ok)}</dd></div>
-        <div class="kv-item"><dt>premium_within_budget</dt><dd>${String(priceGate.premium_within_budget)}</dd></div>
-        <div class="kv-item"><dt>iv_event_heat_ok</dt><dd>${String(priceGate.iv_event_heat_ok)}</dd></div>
-        <div class="kv-item"><dt>theme_cooldown_ok</dt><dd>${String(priceGate.theme_cooldown_ok)}</dd></div>
+        <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.expiry_bucket_ok))}</dd></div>
+        <div class="kv-item"><dt>spread_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.spread_ok))}</dd></div>
+        <div class="kv-item"><dt>premium_within_budget</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.premium_within_budget))}</dd></div>
+        <div class="kv-item"><dt>iv_event_heat_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.iv_event_heat_ok))}</dd></div>
+        <div class="kv-item"><dt>theme_cooldown_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.theme_cooldown_ok))}</dd></div>
       </div>
     </div>
   `;
@@ -115,7 +117,7 @@ function renderHeader({ detail, mode }) {
             <a class="back-link" href="./index.html">Back Home</a>
             <p class="eyebrow">Scenario Form</p>
             <h1>Create Scenario</h1>
-            <p>Stable thesis fields live here first. Review records remain append-only and will land in the next backlog.</p>
+            <p>Stable thesis fields live here first. Daily review records stay append-only on the shared review surface.</p>
           </div>
           <div class="detail-actions">
             <a class="action ghost" href="./index.html">Cancel</a>
@@ -125,7 +127,32 @@ function renderHeader({ detail, mode }) {
     `;
   }
 
+  if (mode === "review") {
+    const cancelHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`;
+
+    return `
+      <section class="panel detail-header">
+        <div class="detail-heading-row">
+          <div class="detail-title">
+            <a class="back-link" href="./index.html">Back Home</a>
+            <p class="eyebrow">Daily Review</p>
+            <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
+            <p>Append a single review packet without mutating stable thesis fields.</p>
+          </div>
+          <div class="detail-actions">
+            <a class="action ghost" href="${cancelHref}">Cancel</a>
+          </div>
+        </div>
+        <div class="headline-meta">
+          <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
+          <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+        </div>
+      </section>
+    `;
+  }
+
   const editHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}&mode=edit`;
+  const reviewHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}&mode=review`;
   const cancelHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`;
   const isEditMode = mode === "edit";
 
@@ -148,7 +175,7 @@ function renderHeader({ detail, mode }) {
               ? `<a class="action ghost" href="${cancelHref}">Cancel</a>`
               : `
                 <a class="action primary" href="${editHref}">Edit Scenario</a>
-                <a class="action ghost" href="./index.html#entry-surfaces">Add Daily Review</a>
+                <a class="action ghost" href="${reviewHref}">Add Daily Review</a>
               `
           }
         </div>
@@ -233,6 +260,12 @@ export function renderDetailPage({ detail, mode, draft, errors }) {
               ? `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`
               : "./index.html"
         })
+      : mode === "review" && detail
+        ? renderDailyReviewForm({
+            draft,
+            errors,
+            cancelHref: `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`
+          })
       : "";
 
   return `

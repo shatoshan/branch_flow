@@ -1,6 +1,6 @@
 # 20260325 Daily Review Append Path
 
-Status: ready
+Status: done
 Prerequisite: backlog/20260325_scenario-form-foundation.md
 Worklog: worklog/20260325_daily-review-append-path.md
 Result: web/, scripts/check.mjs

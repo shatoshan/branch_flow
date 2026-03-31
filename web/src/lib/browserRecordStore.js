@@ -1,4 +1,5 @@
 import { prototypeRecords } from "../data/sampleRecords.js";
+import { appendDailyReviewRecords } from "./dailyReview.js";
 import { cloneRecords, upsertScenarioRecords } from "./scenarioDraft.js";
 
 export const browserRecordStorageKey = "branchflow.prototype-records.v1";
@@ -72,5 +73,20 @@ export function upsertScenarioInStore(rawInput) {
     ...result,
     records: savedRecords,
     scenario: savedScenario
+  };
+}
+
+export function appendDailyReviewInStore(rawInput) {
+  const records = loadRecords();
+  const result = appendDailyReviewRecords(records, rawInput);
+  if (!result.ok) {
+    return result;
+  }
+
+  const savedRecords = saveRecords(result.records);
+
+  return {
+    ...result,
+    records: savedRecords
   };
 }

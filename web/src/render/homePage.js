@@ -10,6 +10,10 @@ function groupByStatus(views) {
   return Object.fromEntries(statusOrder.map((status) => [status, views.filter((view) => view.current_status === status)]));
 }
 
+function buildReviewHref(scenarioId) {
+  return `./detail.html?scenario=${encodeURIComponent(scenarioId)}&mode=review`;
+}
+
 function renderCard(view) {
   return `
     <article class="scenario-card ${escapeHtml(view.current_status)}">
@@ -33,7 +37,10 @@ function renderCard(view) {
         <div class="kv-item"><dt>next_review</dt><dd>${escapeHtml(formatTimestamp(view.next_review_at))}</dd></div>
         <div class="kv-item"><dt>latest_reason</dt><dd>${escapeHtml(view.latest_reason_code)}</dd></div>
       </dl>
-      <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">Open Detail</a>
+      <div class="card-actions">
+        <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">Open Detail</a>
+        <a class="card-link subtle" href="${buildReviewHref(view.scenario_id)}">Add Review</a>
+      </div>
     </article>
   `;
 }
@@ -55,6 +62,8 @@ function renderStatusColumn(status, views) {
 export function renderHomePage({ views, asOf, dueOnly }) {
   const filteredViews = dueOnly ? views.filter((view) => view.is_review_due) : views;
   const grouped = groupByStatus(filteredViews);
+  const firstReviewTarget = views.find((view) => view.is_review_due) ?? views[0] ?? null;
+  const dailyReviewHref = firstReviewTarget ? buildReviewHref(firstReviewTarget.scenario_id) : "./index.html#entry-surfaces";
 
   const dueNow = views.filter((view) => view.is_review_due).length;
   const upcoming = views.filter((view) => view.next_review_at && !view.is_review_due).length;
@@ -67,7 +76,7 @@ export function renderHomePage({ views, asOf, dueOnly }) {
           <div>
             <p class="eyebrow">BranchFlow Prototype</p>
             <h1>Conditional option-buying terminal</h1>
-            <p>Forecasts are out of scope. Stable thesis records now persist in the browser, while review events stay split into the next append-only backlog.</p>
+            <p>Forecasts are out of scope. Stable thesis records and append-only daily reviews now persist in the browser with a shared current view.</p>
           </div>
           <div class="timestamp">As of ${escapeHtml(formatTimestamp(asOf))}</div>
         </div>
@@ -77,7 +86,7 @@ export function renderHomePage({ views, asOf, dueOnly }) {
         <div class="toolbar-row">
           <div class="action-row">
             <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
-            <a class="action ghost" href="#entry-surfaces">Daily Review</a>
+            <a class="action ghost" href="${dailyReviewHref}">Daily Review</a>
           </div>
           <div class="action-row">
             <button class="filter-button ${dueOnly ? "active" : ""}" type="button" data-filter="due">Only Due Now</button>
@@ -107,8 +116,8 @@ export function renderHomePage({ views, asOf, dueOnly }) {
         </section>
 
         <section class="panel entry-panel">
-          <h2 class="section-title">Daily Review Split</h2>
-          <p class="section-copy">Next backlog: per-review records stay append-only and keep rejected vs invalidated reasons separable.</p>
+          <h2 class="section-title">Daily Review Append</h2>
+          <p class="section-copy">Live now: each submit appends observation, gate, and status records together while keeping rejected vs invalidated reasons separable.</p>
           <ul class="summary-list">
             <li><strong>Observation:</strong> snapshot, session phase, trigger state, observed signals</li>
             <li><strong>Price gate:</strong> overall gate, fail reason codes, budget / IV checks</li>

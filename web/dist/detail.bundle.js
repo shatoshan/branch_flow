@@ -311,6 +311,7 @@
   },
   "src/lib/browserRecordStore.js": function(requireModule) {
     const { prototypeRecords } = requireModule("src/data/sampleRecords.js");
+    const { appendDailyReviewRecords } = requireModule("src/lib/dailyReview.js");
     const { cloneRecords, upsertScenarioRecords } = requireModule("src/lib/scenarioDraft.js");
     const browserRecordStorageKey = "branchflow.prototype-records.v1";
     
@@ -386,12 +387,426 @@
       };
     }
     
+    function appendDailyReviewInStore(rawInput) {
+      const records = loadRecords();
+      const result = appendDailyReviewRecords(records, rawInput);
+      if (!result.ok) {
+        return result;
+      }
+    
+      const savedRecords = saveRecords(result.records);
+    
+      return {
+        ...result,
+        records: savedRecords
+      };
+    }
+    
     return {
       "browserRecordStorageKey": browserRecordStorageKey,
       "clonePrototypeRecords": clonePrototypeRecords,
       "loadRecords": loadRecords,
       "saveRecords": saveRecords,
-      "upsertScenarioInStore": upsertScenarioInStore
+      "upsertScenarioInStore": upsertScenarioInStore,
+      "appendDailyReviewInStore": appendDailyReviewInStore
+    };
+  },
+  "src/lib/dailyReview.js": function(requireModule) {
+    const { compareDesc } = requireModule("src/lib/formatters.js");
+    const { cloneRecords } = requireModule("src/lib/scenarioDraft.js");
+    const dailyReviewFormOptions = {
+      sessionPhases: ["morning", "intraday", "after_close", "weekly"],
+      triggerStates: ["partial", "confirmed", "invalidated"],
+      gateStatuses: ["unchecked", "pass", "fail"],
+      statusOptions: ["watch", "eligible", "rejected", "invalidated"],
+      reasonCodes: [
+        "trigger_pending",
+        "trigger_confirmed",
+        "price_gate_pass",
+        "price_gate_fail",
+        "thesis_broken",
+        "time_expired",
+        "manual_archive"
+      ],
+      failReasonCodes: [
+        "expiry_too_short",
+        "spread_too_wide",
+        "premium_over_budget",
+        "iv_event_hot",
+        "theme_cooldown"
+      ],
+      gateCheckFields: [
+        "expiry_bucket_ok",
+        "spread_ok",
+        "premium_within_budget",
+        "iv_event_heat_ok",
+        "theme_cooldown_ok"
+      ]
+    };
+    
+    const requiredDraftFields = [
+      "scenario_id",
+      "observed_at",
+      "session_phase",
+      "trigger_state",
+      "checked_at",
+      "overall_gate",
+      "changed_at",
+      "to_status",
+      "reason_code",
+      "next_review_phase",
+      "next_review_at"
+    ];
+    
+    function normalizeText(value) {
+      return String(value ?? "").trim();
+    }
+    
+    function dedupePreservingOrder(values) {
+      const seen = new Set();
+      const deduped = [];
+    
+      for (const value of values) {
+        if (!value || seen.has(value)) {
+          continue;
+        }
+    
+        seen.add(value);
+        deduped.push(value);
+      }
+    
+      return deduped;
+    }
+    
+    function normalizeDelimitedList(value) {
+      if (Array.isArray(value)) {
+        return dedupePreservingOrder(value.map((entry) => normalizeText(entry)));
+      }
+    
+      return dedupePreservingOrder(
+        normalizeText(value)
+          .split(/[;,]/)
+          .map((entry) => entry.trim())
+      );
+    }
+    
+    function normalizeNullableBoolean(value) {
+      const normalized = normalizeText(value);
+      if (normalized === "true") {
+        return true;
+      }
+    
+      if (normalized === "false") {
+        return false;
+      }
+    
+      return null;
+    }
+    
+    function selectLatest(entries, timestampField) {
+      return [...entries].sort((left, right) => compareDesc(left[timestampField], right[timestampField]))[0] ?? null;
+    }
+    
+    function findScenario(records, scenarioId) {
+      return records.scenarios.find((scenario) => scenario.scenario_id === scenarioId) ?? null;
+    }
+    
+    function getCurrentStatus(records, scenario) {
+      const latestEvent = selectLatest(
+        records.statusEvents.filter((event) => event.scenario_id === scenario.scenario_id),
+        "changed_at"
+      );
+    
+      return latestEvent?.to_status ?? scenario.current_status_seed;
+    }
+    
+    function buildDailyReviewDraft(rawInput, fromStatus) {
+      return {
+        scenario_id: normalizeText(rawInput.scenario_id),
+        from_status: fromStatus,
+        observed_at: normalizeText(rawInput.observed_at),
+        session_phase: normalizeText(rawInput.session_phase),
+        trigger_state: normalizeText(rawInput.trigger_state),
+        observed_signals: normalizeDelimitedList(rawInput.observed_signals),
+        event_risk_today: normalizeText(rawInput.event_risk_today),
+        market_note: normalizeText(rawInput.market_note),
+        operator_action: normalizeText(rawInput.operator_action),
+        source_refs: normalizeDelimitedList(rawInput.source_refs),
+        checked_at: normalizeText(rawInput.checked_at),
+        expiry_bucket_ok: normalizeNullableBoolean(rawInput.expiry_bucket_ok),
+        spread_ok: normalizeNullableBoolean(rawInput.spread_ok),
+        premium_within_budget: normalizeNullableBoolean(rawInput.premium_within_budget),
+        iv_event_heat_ok: normalizeNullableBoolean(rawInput.iv_event_heat_ok),
+        theme_cooldown_ok: normalizeNullableBoolean(rawInput.theme_cooldown_ok),
+        overall_gate: normalizeText(rawInput.overall_gate),
+        fail_reason_codes: normalizeDelimitedList(rawInput.fail_reason_codes),
+        gate_note: normalizeText(rawInput.gate_note),
+        changed_at: normalizeText(rawInput.changed_at),
+        to_status: normalizeText(rawInput.to_status),
+        reason_code: normalizeText(rawInput.reason_code),
+        reason_detail: normalizeText(rawInput.reason_detail),
+        next_review_phase: normalizeText(rawInput.next_review_phase),
+        next_review_at: normalizeText(rawInput.next_review_at)
+      };
+    }
+    
+    function pushRequiredFieldErrors(draft, errors) {
+      for (const field of requiredDraftFields) {
+        if (!draft[field]) {
+          errors.push(`${field} is required`);
+        }
+      }
+    }
+    
+    function pushEnumError(field, value, allowedValues, errors) {
+      if (!allowedValues.includes(value)) {
+        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+      }
+    }
+    
+    function pushTimestampError(field, value, errors) {
+      if (!value) {
+        return;
+      }
+    
+      if (Number.isNaN(new Date(value).getTime())) {
+        errors.push(`${field} must be a valid ISO 8601 timestamp`);
+      }
+    }
+    
+    function normalizeGateChecksForUnchecked(draft) {
+      for (const field of dailyReviewFormOptions.gateCheckFields) {
+        draft[field] = null;
+      }
+    
+      draft.fail_reason_codes = [];
+    }
+    
+    function pushGateValidationErrors(draft, errors) {
+      if (draft.overall_gate === "unchecked") {
+        normalizeGateChecksForUnchecked(draft);
+        return;
+      }
+    
+      for (const field of dailyReviewFormOptions.gateCheckFields) {
+        if (draft[field] === null) {
+          errors.push(`${field} must be set when overall_gate is pass or fail`);
+        }
+      }
+    
+      if (draft.overall_gate === "pass" && draft.fail_reason_codes.length > 0) {
+        errors.push("fail_reason_codes must be empty when overall_gate is pass");
+      }
+    
+      if (draft.overall_gate === "fail" && draft.fail_reason_codes.length === 0) {
+        errors.push("fail_reason_codes requires at least one selection when overall_gate is fail");
+      }
+    
+      for (const failReason of draft.fail_reason_codes) {
+        if (!dailyReviewFormOptions.failReasonCodes.includes(failReason)) {
+          errors.push(`fail_reason_codes must be one of: ${dailyReviewFormOptions.failReasonCodes.join(", ")}`);
+          break;
+        }
+      }
+    }
+    
+    function pushTransitionErrors(draft, errors) {
+      if (draft.from_status === "invalidated" && draft.to_status !== "invalidated") {
+        errors.push("invalidated scenarios can only append another invalidated status event");
+      }
+    
+      if (draft.to_status === "eligible" && draft.overall_gate !== "pass") {
+        errors.push("to_status eligible requires overall_gate pass");
+      }
+    }
+    
+    function formatDatePart(timestamp) {
+      return normalizeText(timestamp).slice(0, 10).replaceAll("-", "");
+    }
+    
+    function nextReviewId(records, collectionName, idField, prefix, timestamp) {
+      const datePart = formatDatePart(timestamp);
+      const pattern = new RegExp(`^${prefix}-${datePart}-(\\d{3})$`);
+      let maxSequence = 0;
+    
+      for (const entry of records[collectionName]) {
+        const match = pattern.exec(entry[idField]);
+        if (!match) {
+          continue;
+        }
+    
+        maxSequence = Math.max(maxSequence, Number.parseInt(match[1], 10));
+      }
+    
+      return `${prefix}-${datePart}-${String(maxSequence + 1).padStart(3, "0")}`;
+    }
+    
+    function latestTimestamp(...timestamps) {
+      return timestamps.reduce((latest, current) => {
+        if (!current) {
+          return latest;
+        }
+    
+        if (!latest) {
+          return current;
+        }
+    
+        return new Date(current).getTime() > new Date(latest).getTime() ? current : latest;
+      }, null);
+    }
+    
+    function createDailyReviewDraft(detail, asOf) {
+      const latestSnapshot = detail?.snapshots?.[0] ?? null;
+      const latestGate = detail?.priceGates?.[0] ?? null;
+      const latestEvent = detail?.statusEvents?.[0] ?? null;
+      const defaultPhase = latestEvent?.next_review_phase ?? detail?.scenario.review_cadence?.[0] ?? "morning";
+      const defaultTimestamp = asOf ?? latestEvent?.changed_at ?? "";
+    
+      return {
+        scenario_id: detail?.scenario.scenario_id ?? "",
+        from_status: detail?.currentView.current_status ?? detail?.scenario.current_status_seed ?? "watch",
+        observed_at: defaultTimestamp,
+        session_phase: defaultPhase,
+        trigger_state: latestSnapshot?.trigger_state ?? "partial",
+        observed_signals: [...(latestSnapshot?.observed_signals ?? [])],
+        event_risk_today: latestSnapshot?.event_risk_today ?? "",
+        market_note: latestSnapshot?.market_note ?? "",
+        operator_action: latestSnapshot?.operator_action ?? "",
+        source_refs: [...(latestSnapshot?.source_refs ?? [])],
+        checked_at: defaultTimestamp,
+        expiry_bucket_ok: latestGate?.overall_gate === "unchecked" ? null : latestGate?.expiry_bucket_ok ?? null,
+        spread_ok: latestGate?.overall_gate === "unchecked" ? null : latestGate?.spread_ok ?? null,
+        premium_within_budget:
+          latestGate?.overall_gate === "unchecked" ? null : latestGate?.premium_within_budget ?? null,
+        iv_event_heat_ok: latestGate?.overall_gate === "unchecked" ? null : latestGate?.iv_event_heat_ok ?? null,
+        theme_cooldown_ok: latestGate?.overall_gate === "unchecked" ? null : latestGate?.theme_cooldown_ok ?? null,
+        overall_gate: latestGate?.overall_gate ?? "unchecked",
+        fail_reason_codes: [...(latestGate?.fail_reason_codes ?? [])],
+        gate_note: latestGate?.gate_note ?? "",
+        changed_at: defaultTimestamp,
+        to_status: detail?.currentView.current_status ?? "watch",
+        reason_code: latestEvent?.reason_code ?? "trigger_pending",
+        reason_detail: latestEvent?.reason_detail ?? "",
+        next_review_phase: defaultPhase,
+        next_review_at: latestEvent?.next_review_at ?? defaultTimestamp
+      };
+    }
+    
+    function normalizeDailyReviewDraftInput(records, rawInput) {
+      const scenario = findScenario(records, normalizeText(rawInput.scenario_id));
+      const fromStatus = scenario ? getCurrentStatus(records, scenario) : "watch";
+      const draft = buildDailyReviewDraft(rawInput, fromStatus);
+      const errors = [];
+    
+      pushRequiredFieldErrors(draft, errors);
+    
+      if (!scenario) {
+        errors.push("scenario_id must refer to an existing scenario");
+      }
+    
+      pushEnumError("from_status", draft.from_status, dailyReviewFormOptions.statusOptions, errors);
+      pushEnumError("session_phase", draft.session_phase, dailyReviewFormOptions.sessionPhases, errors);
+      pushEnumError("trigger_state", draft.trigger_state, dailyReviewFormOptions.triggerStates, errors);
+      pushEnumError("overall_gate", draft.overall_gate, dailyReviewFormOptions.gateStatuses, errors);
+      pushEnumError("to_status", draft.to_status, dailyReviewFormOptions.statusOptions, errors);
+      pushEnumError("reason_code", draft.reason_code, dailyReviewFormOptions.reasonCodes, errors);
+      pushEnumError("next_review_phase", draft.next_review_phase, dailyReviewFormOptions.sessionPhases, errors);
+    
+      pushTimestampError("observed_at", draft.observed_at, errors);
+      pushTimestampError("checked_at", draft.checked_at, errors);
+      pushTimestampError("changed_at", draft.changed_at, errors);
+      pushTimestampError("next_review_at", draft.next_review_at, errors);
+    
+      pushGateValidationErrors(draft, errors);
+      pushTransitionErrors(draft, errors);
+    
+      return {
+        draft,
+        errors,
+        scenario
+      };
+    }
+    
+    function appendDailyReviewRecords(records, rawInput) {
+      const { draft, errors, scenario } = normalizeDailyReviewDraftInput(records, rawInput);
+      if (errors.length > 0 || !scenario) {
+        return {
+          ok: false,
+          errors,
+          draft
+        };
+      }
+    
+      const nextRecords = cloneRecords(records);
+    
+      const snapshot = {
+        snapshot_id: nextReviewId(nextRecords, "observationSnapshots", "snapshot_id", "OBS", draft.observed_at),
+        scenario_id: scenario.scenario_id,
+        observed_at: draft.observed_at,
+        session_phase: draft.session_phase,
+        trigger_state: draft.trigger_state,
+        observed_signals: [...draft.observed_signals],
+        event_risk_today: draft.event_risk_today,
+        market_note: draft.market_note,
+        operator_action: draft.operator_action,
+        source_refs: [...draft.source_refs]
+      };
+    
+      const priceGate = {
+        price_gate_id: nextReviewId(nextRecords, "priceGates", "price_gate_id", "PG", draft.checked_at),
+        scenario_id: scenario.scenario_id,
+        checked_at: draft.checked_at,
+        expiry_bucket_ok: draft.expiry_bucket_ok,
+        spread_ok: draft.spread_ok,
+        premium_within_budget: draft.premium_within_budget,
+        iv_event_heat_ok: draft.iv_event_heat_ok,
+        theme_cooldown_ok: draft.theme_cooldown_ok,
+        overall_gate: draft.overall_gate,
+        fail_reason_codes: [...draft.fail_reason_codes],
+        gate_note: draft.gate_note
+      };
+    
+      const statusEvent = {
+        status_event_id: nextReviewId(nextRecords, "statusEvents", "status_event_id", "ST", draft.changed_at),
+        scenario_id: scenario.scenario_id,
+        changed_at: draft.changed_at,
+        from_status: draft.from_status,
+        to_status: draft.to_status,
+        reason_code: draft.reason_code,
+        reason_detail: draft.reason_detail,
+        snapshot_id: snapshot.snapshot_id,
+        price_gate_id: priceGate.price_gate_id,
+        next_review_phase: draft.next_review_phase,
+        next_review_at: draft.next_review_at
+      };
+    
+      nextRecords.observationSnapshots.push(snapshot);
+      nextRecords.priceGates.push(priceGate);
+      nextRecords.statusEvents.push(statusEvent);
+      nextRecords.prototypeClock = latestTimestamp(
+        nextRecords.prototypeClock,
+        snapshot.observed_at,
+        priceGate.checked_at,
+        statusEvent.changed_at
+      );
+    
+      return {
+        ok: true,
+        errors: [],
+        draft,
+        scenario,
+        snapshot,
+        priceGate,
+        statusEvent,
+        records: nextRecords
+      };
+    }
+    
+    return {
+      "dailyReviewFormOptions": dailyReviewFormOptions,
+      "createDailyReviewDraft": createDailyReviewDraft,
+      "normalizeDailyReviewDraftInput": normalizeDailyReviewDraftInput,
+      "appendDailyReviewRecords": appendDailyReviewRecords
     };
   },
   "src/lib/formatters.js": function(requireModule) {
@@ -458,6 +873,14 @@
       return gateLabels[status] ?? status ?? "n/a";
     }
     
+    function formatBooleanCheck(value) {
+      if (value === null || typeof value === "undefined") {
+        return "n/a";
+      }
+    
+      return value ? "true" : "false";
+    }
+    
     function formatList(values) {
       if (!values || values.length === 0) {
         return "none";
@@ -518,6 +941,7 @@
       "formatPhase": formatPhase,
       "formatTriggerState": formatTriggerState,
       "formatGateStatus": formatGateStatus,
+      "formatBooleanCheck": formatBooleanCheck,
       "formatList": formatList,
       "buildPriceGateSummary": buildPriceGateSummary,
       "isDue": isDue,
@@ -811,20 +1235,23 @@
     };
   },
   "src/pages/detail.js": function(requireModule) {
-    const { loadRecords, upsertScenarioInStore } = requireModule("src/lib/browserRecordStore.js");
+    const { appendDailyReviewInStore, loadRecords, upsertScenarioInStore } = requireModule("src/lib/browserRecordStore.js");
+    const { createDailyReviewDraft } = requireModule("src/lib/dailyReview.js");
     const { createEmptyScenarioDraft, scenarioToDraft } = requireModule("src/lib/scenarioDraft.js");
     const { getScenarioDetail } = requireModule("src/lib/scenarioViews.js");
     const { renderDetailPage } = requireModule("src/render/detailPage.js");
     const app = document.querySelector("#app");
     const pageState = {
-      draft: null,
-      errors: []
+      scenarioDraft: null,
+      scenarioErrors: [],
+      reviewDraft: null,
+      reviewErrors: []
     };
     
     function getMode() {
       const params = new URLSearchParams(window.location.search);
       const mode = params.get("mode");
-      return mode === "new" || mode === "edit" ? mode : "view";
+      return mode === "new" || mode === "edit" || mode === "review" ? mode : "view";
     }
     
     function buildRawScenarioInput(formData) {
@@ -845,6 +1272,35 @@
       };
     }
     
+    function buildRawReviewInput(formData) {
+      return {
+        scenario_id: formData.get("scenario_id"),
+        observed_at: formData.get("observed_at"),
+        session_phase: formData.get("session_phase"),
+        trigger_state: formData.get("trigger_state"),
+        observed_signals: formData.get("observed_signals"),
+        event_risk_today: formData.get("event_risk_today"),
+        market_note: formData.get("market_note"),
+        operator_action: formData.get("operator_action"),
+        source_refs: formData.get("source_refs"),
+        checked_at: formData.get("checked_at"),
+        expiry_bucket_ok: formData.get("expiry_bucket_ok"),
+        spread_ok: formData.get("spread_ok"),
+        premium_within_budget: formData.get("premium_within_budget"),
+        iv_event_heat_ok: formData.get("iv_event_heat_ok"),
+        theme_cooldown_ok: formData.get("theme_cooldown_ok"),
+        overall_gate: formData.get("overall_gate"),
+        fail_reason_codes: formData.getAll("fail_reason_codes"),
+        gate_note: formData.get("gate_note"),
+        changed_at: formData.get("changed_at"),
+        to_status: formData.get("to_status"),
+        reason_code: formData.get("reason_code"),
+        reason_detail: formData.get("reason_detail"),
+        next_review_phase: formData.get("next_review_phase"),
+        next_review_at: formData.get("next_review_at")
+      };
+    }
+    
     function bindScenarioForm() {
       const form = document.querySelector("[data-scenario-form]");
       if (!form) {
@@ -856,20 +1312,43 @@
     
         const result = upsertScenarioInStore(buildRawScenarioInput(new FormData(form)));
         if (!result.ok) {
-          pageState.draft = result.draft;
-          pageState.errors = result.errors;
+          pageState.scenarioDraft = result.draft;
+          pageState.scenarioErrors = result.errors;
           render();
           return;
         }
     
-        pageState.draft = null;
-        pageState.errors = [];
+        pageState.scenarioDraft = null;
+        pageState.scenarioErrors = [];
     
         if (getMode() === "new") {
           window.location.assign("./index.html");
           return;
         }
     
+        window.location.assign(`./detail.html?scenario=${encodeURIComponent(result.scenario.scenario_id)}`);
+      });
+    }
+    
+    function bindReviewForm() {
+      const form = document.querySelector("[data-review-form]");
+      if (!form) {
+        return;
+      }
+    
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+    
+        const result = appendDailyReviewInStore(buildRawReviewInput(new FormData(form)));
+        if (!result.ok) {
+          pageState.reviewDraft = result.draft;
+          pageState.reviewErrors = result.errors;
+          render();
+          return;
+        }
+    
+        pageState.reviewDraft = null;
+        pageState.reviewErrors = [];
         window.location.assign(`./detail.html?scenario=${encodeURIComponent(result.scenario.scenario_id)}`);
       });
     }
@@ -881,30 +1360,307 @@
       const fallbackScenarioId = records.scenarios[0]?.scenario_id ?? "";
       const scenarioId = params.get("scenario") ?? fallbackScenarioId;
       const detail = mode === "new" ? null : getScenarioDetail(records, scenarioId, records.prototypeClock);
+    
       const draft =
-        pageState.draft ??
-        (mode === "new"
-          ? createEmptyScenarioDraft()
-          : detail
-            ? scenarioToDraft(detail.scenario)
-            : createEmptyScenarioDraft());
+        mode === "new" || mode === "edit"
+          ? pageState.scenarioDraft ??
+            (mode === "new"
+              ? createEmptyScenarioDraft()
+              : detail
+                ? scenarioToDraft(detail.scenario)
+                : createEmptyScenarioDraft())
+          : pageState.reviewDraft ?? (detail ? createDailyReviewDraft(detail, records.prototypeClock) : null);
+    
+      const errors =
+        mode === "new" || mode === "edit"
+          ? pageState.scenarioErrors
+          : pageState.reviewErrors;
     
       app.innerHTML = renderDetailPage({
         detail,
         mode,
         draft,
-        errors: pageState.errors
+        errors
       });
     
       bindScenarioForm();
+      bindReviewForm();
     }
     
     render();
     
     return {};
   },
+  "src/render/dailyReviewForm.js": function(requireModule) {
+    const { escapeHtml, formatGateStatus, formatPhase, formatStatus, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { dailyReviewFormOptions } = requireModule("src/lib/dailyReview.js");
+    function renderErrors(errors) {
+      if (!errors || errors.length === 0) {
+        return "";
+      }
+    
+      return `
+        <div class="form-errors" role="alert">
+          <p class="form-errors-title">Fix the following before saving.</p>
+          <ul class="form-error-list">
+            ${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}
+          </ul>
+        </div>
+      `;
+    }
+    
+    function renderOptionLabel(group, value) {
+      if (group === "sessionPhases") {
+        return formatPhase(value);
+      }
+    
+      if (group === "triggerStates") {
+        return formatTriggerState(value);
+      }
+    
+      if (group === "gateStatuses") {
+        return formatGateStatus(value);
+      }
+    
+      if (group === "statusOptions") {
+        return formatStatus(value);
+      }
+    
+      return value;
+    }
+    
+    function renderSelectOptions(group, selectedValue) {
+      return dailyReviewFormOptions[group]
+        .map((value) => {
+          const isSelected = value === selectedValue ? ' selected="selected"' : "";
+          return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(renderOptionLabel(group, value))}</option>`;
+        })
+        .join("");
+    }
+    
+    function renderTriStateOptions(selectedValue) {
+      const options = [
+        { value: "", label: "Unset" },
+        { value: "true", label: "Yes" },
+        { value: "false", label: "No" }
+      ];
+    
+      return options
+        .map((option) => {
+          const isSelected = option.value === (selectedValue === null ? "" : String(selectedValue)) ? ' selected="selected"' : "";
+          return `<option value="${escapeHtml(option.value)}"${isSelected}>${escapeHtml(option.label)}</option>`;
+        })
+        .join("");
+    }
+    
+    function renderFailReasonOptions(selectedValues) {
+      return dailyReviewFormOptions.failReasonCodes
+        .map((value) => {
+          const isChecked = selectedValues.includes(value) ? ' checked="checked"' : "";
+          return `
+            <label class="checkbox-option">
+              <input type="checkbox" name="fail_reason_codes" value="${escapeHtml(value)}"${isChecked} />
+              <span>${escapeHtml(value)}</span>
+            </label>
+          `;
+        })
+        .join("");
+    }
+    
+    function renderDailyReviewForm({ draft, errors, cancelHref }) {
+      const observedSignals = escapeHtml(draft.observed_signals.join(", "));
+      const sourceRefs = escapeHtml(draft.source_refs.join(", "));
+    
+      return `
+        <section class="panel detail-panel form-panel">
+          <div class="form-shell">
+            <div>
+              <h2 class="section-title">Add Daily Review</h2>
+              <p class="section-copy">Append one observation snapshot, one price gate, and one status event in the same submit. Review IDs are assigned automatically.</p>
+            </div>
+            <div class="detail-actions">
+              <a class="action ghost" href="${cancelHref}">Cancel</a>
+            </div>
+          </div>
+          ${renderErrors(errors)}
+          <form class="scenario-form" data-review-form novalidate>
+            <div class="form-grid">
+              <label class="field">
+                <span>scenario_id</span>
+                <input type="text" name="scenario_id" value="${escapeHtml(draft.scenario_id)}" readonly="readonly" aria-readonly="true" />
+              </label>
+    
+              <label class="field">
+                <span>from_status</span>
+                <input type="text" name="from_status" value="${escapeHtml(formatStatus(draft.from_status))}" readonly="readonly" aria-readonly="true" />
+                <small class="field-hint">Derived from the latest status event or seed status.</small>
+              </label>
+    
+              <label class="field">
+                <span>observed_at</span>
+                <input type="text" name="observed_at" value="${escapeHtml(draft.observed_at)}" placeholder="2026-03-25T08:55:00+09:00" />
+              </label>
+    
+              <label class="field">
+                <span>session_phase</span>
+                <select name="session_phase">
+                  ${renderSelectOptions("sessionPhases", draft.session_phase)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>trigger_state</span>
+                <select name="trigger_state">
+                  ${renderSelectOptions("triggerStates", draft.trigger_state)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>checked_at</span>
+                <input type="text" name="checked_at" value="${escapeHtml(draft.checked_at)}" placeholder="2026-03-25T08:58:00+09:00" />
+              </label>
+    
+              <label class="field">
+                <span>overall_gate</span>
+                <select name="overall_gate">
+                  ${renderSelectOptions("gateStatuses", draft.overall_gate)}
+                </select>
+                <small class="field-hint">Use unchecked to append a review without a confirmed option check yet.</small>
+              </label>
+    
+              <label class="field">
+                <span>changed_at</span>
+                <input type="text" name="changed_at" value="${escapeHtml(draft.changed_at)}" placeholder="2026-03-25T09:00:00+09:00" />
+              </label>
+    
+              <label class="field">
+                <span>to_status</span>
+                <select name="to_status">
+                  ${renderSelectOptions("statusOptions", draft.to_status)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>reason_code</span>
+                <select name="reason_code">
+                  ${dailyReviewFormOptions.reasonCodes
+                    .map((value) => {
+                      const isSelected = value === draft.reason_code ? ' selected="selected"' : "";
+                      return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(value)}</option>`;
+                    })
+                    .join("")}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>next_review_phase</span>
+                <select name="next_review_phase">
+                  ${renderSelectOptions("sessionPhases", draft.next_review_phase)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>next_review_at</span>
+                <input type="text" name="next_review_at" value="${escapeHtml(draft.next_review_at)}" placeholder="2026-03-25T15:10:00+09:00" />
+              </label>
+    
+              <label class="field field-wide">
+                <span>observed_signals</span>
+                <input type="text" name="observed_signals" value="${observedSignals}" placeholder="usd_jpy_break, breadth_soft, exporters_weak" />
+                <small class="field-hint">Comma or semicolon separated.</small>
+              </label>
+    
+              <label class="field">
+                <span>event_risk_today</span>
+                <input type="text" name="event_risk_today" value="${escapeHtml(draft.event_risk_today)}" placeholder="none_major" />
+              </label>
+    
+              <label class="field">
+                <span>operator_action</span>
+                <input type="text" name="operator_action" value="${escapeHtml(draft.operator_action)}" placeholder="keep_watch" />
+              </label>
+    
+              <label class="field field-wide">
+                <span>source_refs</span>
+                <input type="text" name="source_refs" value="${sourceRefs}" placeholder="fx_board, breadth_sheet" />
+                <small class="field-hint">Comma or semicolon separated.</small>
+              </label>
+    
+              <label class="field field-wide">
+                <span>market_note</span>
+                <textarea name="market_note" rows="3" placeholder="market context observed during the review">${escapeHtml(draft.market_note)}</textarea>
+              </label>
+    
+              <label class="field">
+                <span>expiry_bucket_ok</span>
+                <select name="expiry_bucket_ok">
+                  ${renderTriStateOptions(draft.expiry_bucket_ok)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>spread_ok</span>
+                <select name="spread_ok">
+                  ${renderTriStateOptions(draft.spread_ok)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>premium_within_budget</span>
+                <select name="premium_within_budget">
+                  ${renderTriStateOptions(draft.premium_within_budget)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>iv_event_heat_ok</span>
+                <select name="iv_event_heat_ok">
+                  ${renderTriStateOptions(draft.iv_event_heat_ok)}
+                </select>
+              </label>
+    
+              <label class="field">
+                <span>theme_cooldown_ok</span>
+                <select name="theme_cooldown_ok">
+                  ${renderTriStateOptions(draft.theme_cooldown_ok)}
+                </select>
+              </label>
+    
+              <fieldset class="field field-wide">
+                <legend>fail_reason_codes</legend>
+                <div class="checkbox-grid">
+                  ${renderFailReasonOptions(draft.fail_reason_codes)}
+                </div>
+                <small class="field-hint">Leave empty when overall_gate is pass or unchecked.</small>
+              </fieldset>
+    
+              <label class="field field-wide">
+                <span>gate_note</span>
+                <textarea name="gate_note" rows="3" placeholder="why the option check passed, failed, or stayed unchecked">${escapeHtml(draft.gate_note)}</textarea>
+              </label>
+    
+              <label class="field field-wide">
+                <span>reason_detail</span>
+                <textarea name="reason_detail" rows="3" placeholder="optional detail attached to the status event">${escapeHtml(draft.reason_detail)}</textarea>
+              </label>
+            </div>
+    
+            <div class="form-actions">
+              <button class="action primary" type="submit">Append Daily Review</button>
+              <a class="action ghost" href="${cancelHref}">Cancel</a>
+            </div>
+          </form>
+        </section>
+      `;
+    }
+    
+    return {
+      "renderDailyReviewForm": renderDailyReviewForm
+    };
+  },
   "src/render/detailPage.js": function(requireModule) {
-    const { escapeHtml, formatGateStatus, formatList, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { escapeHtml, formatBooleanCheck, formatGateStatus, formatList, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { renderDailyReviewForm } = requireModule("src/render/dailyReviewForm.js");
     const { renderScenarioForm } = requireModule("src/render/scenarioForm.js");
     function renderSignals(signals) {
       if (!signals || signals.length === 0) {
@@ -932,11 +1688,11 @@
             <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(priceGate.gate_note)}</dd></div>
           </div>
           <div class="kv-grid">
-            <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${String(priceGate.expiry_bucket_ok)}</dd></div>
-            <div class="kv-item"><dt>spread_ok</dt><dd>${String(priceGate.spread_ok)}</dd></div>
-            <div class="kv-item"><dt>premium_within_budget</dt><dd>${String(priceGate.premium_within_budget)}</dd></div>
-            <div class="kv-item"><dt>iv_event_heat_ok</dt><dd>${String(priceGate.iv_event_heat_ok)}</dd></div>
-            <div class="kv-item"><dt>theme_cooldown_ok</dt><dd>${String(priceGate.theme_cooldown_ok)}</dd></div>
+            <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.expiry_bucket_ok))}</dd></div>
+            <div class="kv-item"><dt>spread_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.spread_ok))}</dd></div>
+            <div class="kv-item"><dt>premium_within_budget</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.premium_within_budget))}</dd></div>
+            <div class="kv-item"><dt>iv_event_heat_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.iv_event_heat_ok))}</dd></div>
+            <div class="kv-item"><dt>theme_cooldown_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.theme_cooldown_ok))}</dd></div>
           </div>
         </div>
       `;
@@ -1012,7 +1768,7 @@
                 <a class="back-link" href="./index.html">Back Home</a>
                 <p class="eyebrow">Scenario Form</p>
                 <h1>Create Scenario</h1>
-                <p>Stable thesis fields live here first. Review records remain append-only and will land in the next backlog.</p>
+                <p>Stable thesis fields live here first. Daily review records stay append-only on the shared review surface.</p>
               </div>
               <div class="detail-actions">
                 <a class="action ghost" href="./index.html">Cancel</a>
@@ -1022,7 +1778,32 @@
         `;
       }
     
+      if (mode === "review") {
+        const cancelHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`;
+    
+        return `
+          <section class="panel detail-header">
+            <div class="detail-heading-row">
+              <div class="detail-title">
+                <a class="back-link" href="./index.html">Back Home</a>
+                <p class="eyebrow">Daily Review</p>
+                <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
+                <p>Append a single review packet without mutating stable thesis fields.</p>
+              </div>
+              <div class="detail-actions">
+                <a class="action ghost" href="${cancelHref}">Cancel</a>
+              </div>
+            </div>
+            <div class="headline-meta">
+              <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
+              <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+            </div>
+          </section>
+        `;
+      }
+    
       const editHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}&mode=edit`;
+      const reviewHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}&mode=review`;
       const cancelHref = `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`;
       const isEditMode = mode === "edit";
     
@@ -1045,7 +1826,7 @@
                   ? `<a class="action ghost" href="${cancelHref}">Cancel</a>`
                   : `
                     <a class="action primary" href="${editHref}">Edit Scenario</a>
-                    <a class="action ghost" href="./index.html#entry-surfaces">Add Daily Review</a>
+                    <a class="action ghost" href="${reviewHref}">Add Daily Review</a>
                   `
               }
             </div>
@@ -1130,6 +1911,12 @@
                   ? `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`
                   : "./index.html"
             })
+          : mode === "review" && detail
+            ? renderDailyReviewForm({
+                draft,
+                errors,
+                cancelHref: `./detail.html?scenario=${encodeURIComponent(detail.scenario.scenario_id)}`
+              })
           : "";
     
       return `

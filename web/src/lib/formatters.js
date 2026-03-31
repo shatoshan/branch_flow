@@ -61,6 +61,14 @@ export function formatGateStatus(status) {
   return gateLabels[status] ?? status ?? "n/a";
 }
 
+export function formatBooleanCheck(value) {
+  if (value === null || typeof value === "undefined") {
+    return "n/a";
+  }
+
+  return value ? "true" : "false";
+}
+
 export function formatList(values) {
   if (!values || values.length === 0) {
     return "none";

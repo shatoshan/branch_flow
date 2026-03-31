@@ -362,6 +362,17 @@ button {
   font-weight: 600;
 }
 
+.card-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.card-link.subtle {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(19, 32, 51, 0.08);
+}
+
 .empty-state {
   margin: 0;
   padding: 1rem;
