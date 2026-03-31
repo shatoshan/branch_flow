@@ -1,6 +1,6 @@
 # 20260325 Japanese Operator Surface
 
-Status: todo
+Status: done
 Prerequisite: backlog/20260325_operator-surface-hardening.md
 Worklog: worklog/20260325_japanese-operator-surface.md
 Result: web/, scripts/check.mjs, materials/

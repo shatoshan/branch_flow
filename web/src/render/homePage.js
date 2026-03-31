@@ -4,6 +4,7 @@ import {
   escapeHtml,
   formatCodeLabel,
   formatCodeList,
+  formatFieldLabel,
   formatStatus,
   formatTimestamp,
   isSameTokyoDay
@@ -22,8 +23,8 @@ function buildReviewHref(scenarioId) {
 function renderCard(view) {
   const decision = buildDecisionSummary(view);
   const evidenceLine = view.linked_snapshot_id
-    ? `Observed ${formatCodeList(view.linked_observed_signals)} | Sources ${formatCodeList(view.linked_source_refs)}`
-    : "Observed none | Sources none";
+    ? `観測: ${formatCodeList(view.linked_observed_signals)} / 参照: ${formatCodeList(view.linked_source_refs)}`
+    : "観測: なし / 参照: なし";
 
   return `
     <article class="scenario-card ${escapeHtml(view.current_status)}">
@@ -34,7 +35,7 @@ function renderCard(view) {
             <span class="badge ${escapeHtml(view.current_status)}">${escapeHtml(formatStatus(view.current_status))}</span>
           </div>
         </div>
-        ${view.is_review_due ? '<span class="due-chip">due now</span>' : ""}
+        ${view.is_review_due ? '<span class="due-chip">要確認</span>' : ""}
       </div>
       <div class="decision-block">
         <p class="decision-kicker">${escapeHtml(decision.label)}</p>
@@ -43,26 +44,26 @@ function renderCard(view) {
         <p class="support-line">${escapeHtml(buildPriceFreshnessSummary(view))}</p>
       </div>
       <dl class="kv-list">
-        <div class="kv-item"><dt>market</dt><dd>${escapeHtml(view.market)}</dd></div>
-        <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(view.direction)}</dd></div>
-        <div class="kv-item"><dt>horizon</dt><dd>${escapeHtml(view.horizon_bucket)}</dd></div>
-        <div class="kv-item"><dt>trigger</dt><dd>${escapeHtml(view.observation_trigger)}</dd></div>
-        <div class="kv-item"><dt>flow</dt><dd>${escapeHtml(view.flow_chain)}</dd></div>
-        <div class="kv-item"><dt>price</dt><dd>${escapeHtml(view.card_price_gate_summary)}</dd></div>
-        <div class="kv-item"><dt>invalidation</dt><dd>${escapeHtml(view.invalidation_rule)}</dd></div>
-        <div class="kv-item"><dt>next_review</dt><dd>${escapeHtml(formatTimestamp(view.next_review_at))}</dd></div>
-        <div class="kv-item"><dt>event_risk</dt><dd>${escapeHtml(formatCodeLabel(view.linked_event_risk_today))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("market"))}</dt><dd>${escapeHtml(formatCodeLabel(view.market))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("direction"))}</dt><dd>${escapeHtml(formatCodeLabel(view.direction))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("horizon"))}</dt><dd>${escapeHtml(formatCodeLabel(view.horizon_bucket))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("trigger"))}</dt><dd>${escapeHtml(formatCodeLabel(view.observation_trigger))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("flow"))}</dt><dd>${escapeHtml(formatCodeLabel(view.flow_chain))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("price"))}</dt><dd>${escapeHtml(view.card_price_gate_summary)}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("invalidation"))}</dt><dd>${escapeHtml(formatCodeLabel(view.invalidation_rule))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("next_review"))}</dt><dd>${escapeHtml(formatTimestamp(view.next_review_at))}</dd></div>
+        <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("event_risk"))}</dt><dd>${escapeHtml(formatCodeLabel(view.linked_event_risk_today))}</dd></div>
       </dl>
       <div class="card-actions">
-        <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">Open Detail</a>
-        <a class="card-link subtle" href="${buildReviewHref(view.scenario_id)}">Add Review</a>
+        <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">詳細を見る</a>
+        <a class="card-link subtle" href="${buildReviewHref(view.scenario_id)}">レビュー追加</a>
       </div>
     </article>
   `;
 }
 
 function renderStatusColumn(status, views) {
-  const cards = views.length > 0 ? views.map((view) => renderCard(view)).join("") : '<p class="empty-state">No scenarios in this status.</p>';
+  const cards = views.length > 0 ? views.map((view) => renderCard(view)).join("") : '<p class="empty-state">この状態のシナリオはありません。</p>';
 
   return `
     <section class="panel status-column ${escapeHtml(status)}">
@@ -93,30 +94,30 @@ export function renderHomePage({ views, asOf, dueOnly }) {
       <section class="panel hero">
         <div class="hero-top">
           <div>
-            <p class="eyebrow">BranchFlow Prototype</p>
-            <h1>Conditional option-buying terminal</h1>
-            <p>Forecasts are out of scope. Home cards now surface why now / why not now, linked observation evidence, and whether the latest price check is still fresh enough to trust.</p>
+            <p class="eyebrow">BranchFlow 試作</p>
+            <h1>条件付きオプション買い端末</h1>
+            <p>予測は対象外です。ホームカードでは、候補化理由、監視継続や見送りの理由、紐づく観測根拠、価格チェックの鮮度を一目で確認できます。</p>
           </div>
-          <div class="timestamp">As of ${escapeHtml(formatTimestamp(asOf))}</div>
+          <div class="timestamp">${escapeHtml(formatTimestamp(asOf))} 時点</div>
         </div>
       </section>
 
       <section class="panel toolbar">
         <div class="toolbar-row">
           <div class="action-row">
-            <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
-            <a class="action ghost" href="${dailyReviewHref}">Daily Review</a>
+            <a class="action primary" href="./detail.html?mode=new">新規シナリオ</a>
+            <a class="action ghost" href="${dailyReviewHref}">日次レビュー</a>
           </div>
           <div class="action-row">
-            <button class="filter-button ${dueOnly ? "active" : ""}" type="button" data-filter="due">Only Due Now</button>
-            <button class="filter-button ${dueOnly ? "" : "active"}" type="button" data-filter="all">All Scenarios</button>
+            <button class="filter-button ${dueOnly ? "active" : ""}" type="button" data-filter="due">要確認のみ</button>
+            <button class="filter-button ${dueOnly ? "" : "active"}" type="button" data-filter="all">全シナリオ</button>
           </div>
         </div>
         <div class="metric-grid">
-          <div class="metric-card"><span>Due Now</span><strong>${dueNow}</strong></div>
-          <div class="metric-card"><span>Upcoming</span><strong>${upcoming}</strong></div>
-          <div class="metric-card"><span>No Trade Today</span><strong>${noTradeToday}</strong></div>
-          <div class="metric-card"><span>Invalidated Total</span><strong>${invalidatedTotal}</strong></div>
+          <div class="metric-card"><span>要確認</span><strong>${dueNow}</strong></div>
+          <div class="metric-card"><span>予定あり</span><strong>${upcoming}</strong></div>
+          <div class="metric-card"><span>本日見送り</span><strong>${noTradeToday}</strong></div>
+          <div class="metric-card"><span>累計失効</span><strong>${invalidatedTotal}</strong></div>
         </div>
       </section>
 
@@ -126,22 +127,22 @@ export function renderHomePage({ views, asOf, dueOnly }) {
 
       <section id="entry-surfaces" class="entry-grid">
         <section class="panel entry-panel">
-          <h2 class="section-title">Scenario Form</h2>
-          <p class="section-copy">Live now: detail.html owns stable thesis create/edit, backed by a shared browser record store.</p>
+          <h2 class="section-title">シナリオ登録</h2>
+          <p class="section-copy">詳細画面から、固定的な仮説項目をブラウザ保存領域へ記録できます。</p>
           <ul class="summary-list">
-            <li><strong>Saved fields:</strong> market, direction, summary, horizon, trigger, flow, invalidation, cadence, tags, notes</li>
-            <li><strong>Open path:</strong> New Scenario on home, Edit Scenario on detail</li>
-            <li><strong>Persistence:</strong> localStorage snapshot shared across home/detail</li>
+            <li><strong>保存項目:</strong> 市場、方向、要約、監視期間、トリガー、展開連鎖、失効条件、見直し頻度、タグ、メモ</li>
+            <li><strong>導線:</strong> home の「新規シナリオ」、detail の「シナリオ編集」</li>
+            <li><strong>保存先:</strong> home/detail で共有されるブラウザ保存スナップショット</li>
           </ul>
         </section>
 
         <section class="panel entry-panel">
-          <h2 class="section-title">Daily Review Append</h2>
-          <p class="section-copy">Live now: each submit appends observation, gate, and status records together while keeping rejected vs invalidated reasons separable.</p>
+          <h2 class="section-title">日次レビュー追記</h2>
+          <p class="section-copy">1回の送信で観測、価格条件、状態変更をまとめて追記し、見送りと失効の理由を分けて残せます。</p>
           <ul class="summary-list">
-            <li><strong>Observation:</strong> snapshot, session phase, trigger state, observed signals</li>
-            <li><strong>Price gate:</strong> overall gate, fail reason codes, budget / IV checks</li>
-            <li><strong>Status event:</strong> from, to, reason_code, next_review_phase, next_review_at</li>
+            <li><strong>観測:</strong> 観測時刻、確認フェーズ、トリガー状態、観測シグナル</li>
+            <li><strong>価格条件:</strong> 総合判定、不通過理由、予算 / IV / スプレッド確認</li>
+            <li><strong>状態変更:</strong> 開始状態、更新後状態、理由コード、次回確認フェーズ、次回確認時刻</li>
           </ul>
         </section>
       </section>

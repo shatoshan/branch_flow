@@ -39,11 +39,11 @@ const homeMarkup = renderHomePage({
   asOf: prototypeRecords.prototypeClock,
   dueOnly: false
 });
-assert.match(homeMarkup, /Conditional option-buying terminal/);
-assert.match(homeMarkup, /Why not now: Trigger is still partial\./);
-assert.match(homeMarkup, /Price stale: checked 6h 8m before the latest decision\./);
-assert.match(homeMarkup, /No Trade Today/);
-assert.match(homeMarkup, /Invalidated Total/);
+assert.match(homeMarkup, /条件付きオプション買い端末/);
+assert.match(homeMarkup, /監視継続理由: トリガーはまだ一部成立です。/);
+assert.match(homeMarkup, /価格鮮度: 古い（最新判断の6時間8分前に確認）。/);
+assert.match(homeMarkup, /本日見送り/);
+assert.match(homeMarkup, /累計失効/);
 assert.match(homeMarkup, /detail\.html\?scenario=NKY-D-001/);
 assert.match(homeMarkup, /mode=review/);
 
@@ -55,17 +55,17 @@ const detailMarkup = renderDetailPage({
   draft: scenarioToDraft(detail.scenario),
   errors: []
 });
-assert.match(detailMarkup, /Scenario Thesis/);
-assert.match(detailMarkup, /Current View/);
-assert.match(detailMarkup, /Observation Timeline/);
-assert.match(detailMarkup, /Price Gate/);
-assert.match(detailMarkup, /Status History/);
-assert.match(detailMarkup, /linked_snapshot_at/);
-assert.match(detailMarkup, /event_risk_today/);
-assert.match(detailMarkup, /source_refs/);
-assert.match(detailMarkup, /Price stale: checked 6h 8m before the latest decision\./);
-assert.match(detailMarkup, /Edit Scenario/);
-assert.match(detailMarkup, /Add Daily Review/);
+assert.match(detailMarkup, /シナリオ仮説/);
+assert.match(detailMarkup, /現在の見立て/);
+assert.match(detailMarkup, /観測タイムライン/);
+assert.match(detailMarkup, /価格条件/);
+assert.match(detailMarkup, /状態履歴/);
+assert.match(detailMarkup, /参照観測時刻/);
+assert.match(detailMarkup, /当日イベント/);
+assert.match(detailMarkup, /参照ソース/);
+assert.match(detailMarkup, /価格鮮度: 古い（最新判断の6時間8分前に確認）。/);
+assert.match(detailMarkup, /シナリオ編集/);
+assert.match(detailMarkup, /レビュー追加/);
 
 const newScenarioInput = {
   ...createEmptyScenarioDraft(),
@@ -143,8 +143,8 @@ const editMarkup = renderDetailPage({
   draft: scenarioToDraft(detail.scenario),
   errors: []
 });
-assert.match(editMarkup, /Save Scenario/);
-assert.match(editMarkup, /Update stable thesis fields without touching review history/);
+assert.match(editMarkup, /シナリオを保存/);
+assert.match(editMarkup, /レビュー履歴には触れず、固定的な仮説項目だけを更新します。/);
 
 const newMarkup = renderDetailPage({
   detail: null,
@@ -152,8 +152,8 @@ const newMarkup = renderDetailPage({
   draft: createEmptyScenarioDraft(),
   errors: []
 });
-assert.match(newMarkup, /Create Scenario/);
-assert.match(newMarkup, /review_cadence/);
+assert.match(newMarkup, /新規シナリオ/);
+assert.match(newMarkup, /見直し頻度/);
 
 const dailyReviewDraft = createDailyReviewDraft(detail, "2026-03-25T09:00:00+09:00");
 assert.equal(dailyReviewDraft.scenario_id, "NKY-D-001");
@@ -268,7 +268,7 @@ const reviewMarkup = renderDetailPage({
   draft: dailyReviewDraft,
   errors: []
 });
-assert.match(reviewMarkup, /Append Daily Review/);
-assert.match(reviewMarkup, /status event/);
+assert.match(reviewMarkup, /日次レビューを追記/);
+assert.match(reviewMarkup, /観測、価格条件、状態変更をまとめて追記します。/);
 
 console.log("check: ok");

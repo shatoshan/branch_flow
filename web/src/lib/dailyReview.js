@@ -1,4 +1,12 @@
-import { compareDesc } from "./formatters.js";
+import {
+  compareDesc,
+  formatCodeLabel,
+  formatFieldLabel,
+  formatGateStatus,
+  formatPhase,
+  formatStatus,
+  formatTriggerState
+} from "./formatters.js";
 import { cloneRecords } from "./scenarioDraft.js";
 
 export const dailyReviewFormOptions = {
@@ -140,14 +148,38 @@ function buildDailyReviewDraft(rawInput, fromStatus) {
 function pushRequiredFieldErrors(draft, errors) {
   for (const field of requiredDraftFields) {
     if (!draft[field]) {
-      errors.push(`${field} is required`);
+      errors.push(`${formatFieldLabel(field)}は必須です`);
     }
   }
 }
 
+function formatAllowedValue(field, value) {
+  if (field === "from_status" || field === "to_status") {
+    return formatStatus(value);
+  }
+
+  if (field === "session_phase" || field === "next_review_phase") {
+    return formatPhase(value);
+  }
+
+  if (field === "trigger_state") {
+    return formatTriggerState(value);
+  }
+
+  if (field === "overall_gate") {
+    return formatGateStatus(value);
+  }
+
+  return formatCodeLabel(value);
+}
+
 function pushEnumError(field, value, allowedValues, errors) {
   if (!allowedValues.includes(value)) {
-    errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+    errors.push(
+      `${formatFieldLabel(field)}は次のいずれかを選択してください: ${allowedValues
+        .map((allowedValue) => formatAllowedValue(field, allowedValue))
+        .join(" / ")}`
+    );
   }
 }
 
@@ -157,7 +189,7 @@ function pushTimestampError(field, value, errors) {
   }
 
   if (Number.isNaN(new Date(value).getTime())) {
-    errors.push(`${field} must be a valid ISO 8601 timestamp`);
+    errors.push(`${formatFieldLabel(field)}は有効な ISO 8601 タイムスタンプで入力してください`);
   }
 }
 
@@ -177,21 +209,31 @@ function pushGateValidationErrors(draft, errors) {
 
   for (const field of dailyReviewFormOptions.gateCheckFields) {
     if (draft[field] === null) {
-      errors.push(`${field} must be set when overall_gate is pass or fail`);
+      errors.push(
+        `${formatFieldLabel(field)}は${formatFieldLabel("overall_gate")}が「${formatGateStatus("pass")}」または「${formatGateStatus("fail")}」のとき必須です`
+      );
     }
   }
 
   if (draft.overall_gate === "pass" && draft.fail_reason_codes.length > 0) {
-    errors.push("fail_reason_codes must be empty when overall_gate is pass");
+    errors.push(
+      `${formatFieldLabel("overall_gate")}が「${formatGateStatus("pass")}」のとき、${formatFieldLabel("fail_reason_codes")}は空にしてください`
+    );
   }
 
   if (draft.overall_gate === "fail" && draft.fail_reason_codes.length === 0) {
-    errors.push("fail_reason_codes requires at least one selection when overall_gate is fail");
+    errors.push(
+      `${formatFieldLabel("overall_gate")}が「${formatGateStatus("fail")}」のとき、${formatFieldLabel("fail_reason_codes")}を少なくとも1つ選択してください`
+    );
   }
 
   for (const failReason of draft.fail_reason_codes) {
     if (!dailyReviewFormOptions.failReasonCodes.includes(failReason)) {
-      errors.push(`fail_reason_codes must be one of: ${dailyReviewFormOptions.failReasonCodes.join(", ")}`);
+      errors.push(
+        `${formatFieldLabel("fail_reason_codes")}は次のいずれかを選択してください: ${dailyReviewFormOptions.failReasonCodes
+          .map((value) => formatCodeLabel(value))
+          .join(" / ")}`
+      );
       break;
     }
   }
@@ -199,11 +241,11 @@ function pushGateValidationErrors(draft, errors) {
 
 function pushTransitionErrors(draft, errors) {
   if (draft.from_status === "invalidated" && draft.to_status !== "invalidated") {
-    errors.push("invalidated scenarios can only append another invalidated status event");
+    errors.push("失効済みシナリオには失効状態のみ追記できます");
   }
 
   if (draft.to_status === "eligible" && draft.overall_gate !== "pass") {
-    errors.push("to_status eligible requires overall_gate pass");
+    errors.push("更新後状態を「候補」にするには、総合判定が「通過」である必要があります");
   }
 }
 
@@ -288,7 +330,7 @@ export function normalizeDailyReviewDraftInput(records, rawInput) {
   pushRequiredFieldErrors(draft, errors);
 
   if (!scenario) {
-    errors.push("scenario_id must refer to an existing scenario");
+    errors.push("シナリオIDは既存シナリオを指定してください");
   }
 
   pushEnumError("from_status", draft.from_status, dailyReviewFormOptions.statusOptions, errors);

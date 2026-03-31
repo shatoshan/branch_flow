@@ -412,7 +412,7 @@
     };
   },
   "src/lib/dailyReview.js": function(requireModule) {
-    const { compareDesc } = requireModule("src/lib/formatters.js");
+    const { compareDesc, formatCodeLabel, formatFieldLabel, formatGateStatus, formatPhase, formatStatus, formatTriggerState } = requireModule("src/lib/formatters.js");
     const { cloneRecords } = requireModule("src/lib/scenarioDraft.js");
     const dailyReviewFormOptions = {
       sessionPhases: ["morning", "intraday", "after_close", "weekly"],
@@ -553,14 +553,38 @@
     function pushRequiredFieldErrors(draft, errors) {
       for (const field of requiredDraftFields) {
         if (!draft[field]) {
-          errors.push(`${field} is required`);
+          errors.push(`${formatFieldLabel(field)}は必須です`);
         }
       }
     }
     
+    function formatAllowedValue(field, value) {
+      if (field === "from_status" || field === "to_status") {
+        return formatStatus(value);
+      }
+    
+      if (field === "session_phase" || field === "next_review_phase") {
+        return formatPhase(value);
+      }
+    
+      if (field === "trigger_state") {
+        return formatTriggerState(value);
+      }
+    
+      if (field === "overall_gate") {
+        return formatGateStatus(value);
+      }
+    
+      return formatCodeLabel(value);
+    }
+    
     function pushEnumError(field, value, allowedValues, errors) {
       if (!allowedValues.includes(value)) {
-        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+        errors.push(
+          `${formatFieldLabel(field)}は次のいずれかを選択してください: ${allowedValues
+            .map((allowedValue) => formatAllowedValue(field, allowedValue))
+            .join(" / ")}`
+        );
       }
     }
     
@@ -570,7 +594,7 @@
       }
     
       if (Number.isNaN(new Date(value).getTime())) {
-        errors.push(`${field} must be a valid ISO 8601 timestamp`);
+        errors.push(`${formatFieldLabel(field)}は有効な ISO 8601 タイムスタンプで入力してください`);
       }
     }
     
@@ -590,21 +614,31 @@
     
       for (const field of dailyReviewFormOptions.gateCheckFields) {
         if (draft[field] === null) {
-          errors.push(`${field} must be set when overall_gate is pass or fail`);
+          errors.push(
+            `${formatFieldLabel(field)}は${formatFieldLabel("overall_gate")}が「${formatGateStatus("pass")}」または「${formatGateStatus("fail")}」のとき必須です`
+          );
         }
       }
     
       if (draft.overall_gate === "pass" && draft.fail_reason_codes.length > 0) {
-        errors.push("fail_reason_codes must be empty when overall_gate is pass");
+        errors.push(
+          `${formatFieldLabel("overall_gate")}が「${formatGateStatus("pass")}」のとき、${formatFieldLabel("fail_reason_codes")}は空にしてください`
+        );
       }
     
       if (draft.overall_gate === "fail" && draft.fail_reason_codes.length === 0) {
-        errors.push("fail_reason_codes requires at least one selection when overall_gate is fail");
+        errors.push(
+          `${formatFieldLabel("overall_gate")}が「${formatGateStatus("fail")}」のとき、${formatFieldLabel("fail_reason_codes")}を少なくとも1つ選択してください`
+        );
       }
     
       for (const failReason of draft.fail_reason_codes) {
         if (!dailyReviewFormOptions.failReasonCodes.includes(failReason)) {
-          errors.push(`fail_reason_codes must be one of: ${dailyReviewFormOptions.failReasonCodes.join(", ")}`);
+          errors.push(
+            `${formatFieldLabel("fail_reason_codes")}は次のいずれかを選択してください: ${dailyReviewFormOptions.failReasonCodes
+              .map((value) => formatCodeLabel(value))
+              .join(" / ")}`
+          );
           break;
         }
       }
@@ -612,11 +646,11 @@
     
     function pushTransitionErrors(draft, errors) {
       if (draft.from_status === "invalidated" && draft.to_status !== "invalidated") {
-        errors.push("invalidated scenarios can only append another invalidated status event");
+        errors.push("失効済みシナリオには失効状態のみ追記できます");
       }
     
       if (draft.to_status === "eligible" && draft.overall_gate !== "pass") {
-        errors.push("to_status eligible requires overall_gate pass");
+        errors.push("更新後状態を「候補」にするには、総合判定が「通過」である必要があります");
       }
     }
     
@@ -701,7 +735,7 @@
       pushRequiredFieldErrors(draft, errors);
     
       if (!scenario) {
-        errors.push("scenario_id must refer to an existing scenario");
+        errors.push("シナリオIDは既存シナリオを指定してください");
       }
     
       pushEnumError("from_status", draft.from_status, dailyReviewFormOptions.statusOptions, errors);
@@ -810,30 +844,183 @@
     };
   },
   "src/lib/formatters.js": function(requireModule) {
+    const unsetLabel = "未設定";
+    const emptyLabel = "なし";
+    
     const statusLabels = {
-      watch: "Watch",
-      eligible: "Eligible",
-      rejected: "Rejected",
-      invalidated: "Invalidated"
+      watch: "監視",
+      eligible: "候補",
+      rejected: "見送り",
+      invalidated: "失効"
     };
     
     const phaseLabels = {
-      morning: "Morning",
-      intraday: "Intraday",
-      after_close: "After Close",
-      weekly: "Weekly"
+      morning: "朝",
+      intraday: "場中",
+      after_close: "引け後",
+      weekly: "週次"
     };
     
     const triggerLabels = {
-      partial: "Partial",
-      confirmed: "Confirmed",
-      invalidated: "Invalidated"
+      partial: "一部成立",
+      confirmed: "確認済み",
+      invalidated: "失効接触"
     };
     
     const gateLabels = {
-      pass: "Pass",
-      fail: "Fail",
-      unchecked: "Unchecked"
+      pass: "通過",
+      fail: "不通過",
+      unchecked: "未確認"
+    };
+    
+    const fieldLabels = {
+      scenario_id: "シナリオID",
+      market: "市場",
+      direction: "方向",
+      scenario_summary: "シナリオ要約",
+      horizon_bucket: "監視期間",
+      entry_window: "仕掛け期間",
+      observation_trigger: "観測トリガー",
+      flow_chain: "展開連鎖",
+      price_gate_policy: "価格ガード方針",
+      invalidation_rule: "失効条件",
+      review_cadence: "見直し頻度",
+      tags: "タグ",
+      notes: "メモ",
+      from_status: "開始状態",
+      observed_at: "観測時刻",
+      session_phase: "確認フェーズ",
+      trigger_state: "トリガー状態",
+      observed_signals: "観測シグナル",
+      event_risk_today: "当日イベント",
+      market_note: "市況メモ",
+      operator_action: "オペレーター判断",
+      source_refs: "参照ソース",
+      checked_at: "価格確認時刻",
+      expiry_bucket_ok: "期限条件",
+      spread_ok: "スプレッド",
+      premium_within_budget: "予算内",
+      iv_event_heat_ok: "IV過熱",
+      theme_cooldown_ok: "テーマ間隔",
+      overall_gate: "総合判定",
+      fail_reason_codes: "不通過理由",
+      gate_note: "価格メモ",
+      changed_at: "状態更新時刻",
+      to_status: "更新後状態",
+      reason_code: "理由コード",
+      reason_detail: "理由補足",
+      next_review_phase: "次回確認フェーズ",
+      next_review_at: "次回確認時刻",
+      horizon: "監視期間",
+      trigger: "観測トリガー",
+      flow: "展開連鎖",
+      price: "価格条件",
+      invalidation: "失効条件",
+      next_review: "次回確認",
+      event_risk: "当日イベント",
+      decision_at: "判断時刻",
+      linked_snapshot_at: "参照観測時刻",
+      snapshot_gap: "観測との時差",
+      linked_gate_at: "参照価格時刻",
+      gate_gap: "価格との時差",
+      linked_price_gate: "参照価格判定",
+      fail_reasons: "不通過理由",
+      latest_reason_code: "最新理由",
+      latest_reason_detail: "最新補足",
+      linked_gate_note: "参照価格メモ"
+    };
+    
+    const codeLabels = {
+      nikkei225: "日経225",
+      downside: "下落",
+      upside: "上昇",
+      "1d_2w": "1日-2週",
+      same_day: "当日",
+      same_week: "同週",
+      next_3_sessions: "次の3セッション",
+      next_5_sessions: "次の5セッション",
+      standard_min_gate: "標準価格ガード",
+      event_guarded_gate: "イベント警戒ガード",
+      seed_status: "初期状態",
+      trigger_pending: "トリガー待ち",
+      trigger_confirmed: "トリガー確認",
+      price_gate_pass: "価格条件通過",
+      price_gate_fail: "価格条件不通過",
+      thesis_broken: "仮説失効",
+      time_expired: "時間切れ",
+      manual_archive: "手動アーカイブ",
+      expiry_too_short: "期限が短い",
+      spread_too_wide: "スプレッドが広い",
+      premium_over_budget: "プレミアムが予算超過",
+      iv_event_hot: "IVが過熱",
+      theme_cooldown: "テーマ間隔不足",
+      trigger_confirmed_and_gate_passed: "トリガー確認と価格条件通過が揃った",
+      pressure_remains_but_not_clean_enough_to_promote: "下押しは残るが候補化には不十分",
+      iv_event_hot_and_spread_too_wide: "IV過熱とスプレッド拡大",
+      support_recovered_and_breadth_turned: "サポート回復と内部改善",
+      target_put_premium_exceeded_daily_loss_budget: "プットプレミアムが日次損失予算を超過",
+      near_term_puts_remained_inside_daily_risk_budget: "近期限プットは日次リスク予算内",
+      event_premium_spike_removed_edge_from_downside_hedge: "イベント前のプレミアム上昇で優位性が消失",
+      none_major_before_open: "大きな予定なし（寄り前）",
+      us_data_later: "米指標あり（後半）",
+      us_data_pending: "米指標待ち",
+      none_major: "大きな予定なし",
+      scheduled_us_macro_event: "予定済み米マクロイベント",
+      keep_watch: "監視継続",
+      check_price_gate: "価格確認",
+      reset_to_watch: "監視へ戻す",
+      stay_alert: "警戒継続",
+      promote_eligible: "候補化",
+      keep_rejected: "見送り継続",
+      watch_for_invalidation: "失効警戒",
+      invalidate: "失効",
+      futures_board: "先物ボード",
+      fx_board: "FXボード",
+      rates_dashboard: "金利ダッシュボード",
+      breadth_sheet: "騰落シート",
+      nky_futures: "日経先物",
+      cash_close: "現物引け",
+      cash_open: "現物寄り",
+      cash_chart: "現物チャート",
+      vol_board: "ボラボード",
+      macro_calendar: "マクロカレンダー",
+      options_chain: "オプションチェーン",
+      us10y_up: "米10年金利上昇",
+      usd_jpy_down: "ドル円下落",
+      nky_futures_soft: "日経先物軟調",
+      usd_jpy_break: "ドル円下抜け",
+      exporters_weak: "輸出株軟調",
+      breadth_soft: "騰落軟化",
+      close_above_low: "安値引け回避",
+      pressure_remains: "下押し継続",
+      yen_firm: "円高維持",
+      gap_down_open: "ギャップダウン寄り",
+      risk_off_breadth: "リスクオフ主導",
+      weak_opening_bid: "寄り後の買い弱い",
+      first_hour_reclaim_failed: "初動リクレイム失敗",
+      futures_sell_programs: "先物売りプログラム",
+      banks_weak: "銀行株軟調",
+      event_calendar_dense: "イベント日程密集",
+      put_skew_up: "プットスキュー上昇",
+      term_structure_firm: "期間構造高止まり",
+      spread_widening: "スプレッド拡大",
+      iv_jump: "IV急騰",
+      headline_risk_unchanged: "ヘッドライン不安継続",
+      prior_support_break: "既存サポート割れ",
+      breadth_deteriorates: "騰落悪化",
+      buyers_absent: "買い手不在",
+      support_recovers: "サポート回復",
+      breadth_turns: "騰落改善",
+      sellers_stall: "売り鈍化",
+      overnight_rates_repricing_persisted: "寄り前も金利再評価が継続",
+      cash_market_failed_to_reclaim_opening_gap: "現物は寄りギャップを埋め戻せず",
+      sell_pressure_remained_but_no_clean_close_break: "下押しは残るが引けの明確な崩れなし",
+      open_failed_to_fill_gap_in_first_minutes: "寄り直後もギャップを埋められず",
+      rebound_attempt_stalled_under_prior_range: "戻りは前日レンジ下で失速",
+      hedge_demand_arrived_before_open: "寄り前からヘッジ需要が流入",
+      option_market_overheated_relative_to_thesis_quality: "オプション価格が仮説の質に対して過熱",
+      support_break_needs_follow_through: "サポート割れ後の追随売り待ち",
+      thesis_lost_edge_after_support_recovery: "サポート回復で仮説優位が消失"
     };
     
     const tokyoDayFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -854,7 +1041,7 @@
     
     function formatTimestamp(value) {
       if (!value) {
-        return "none";
+        return unsetLabel;
       }
     
       return new Intl.DateTimeFormat("ja-JP", {
@@ -865,68 +1052,68 @@
     }
     
     function formatStatus(status) {
-      return statusLabels[status] ?? status;
+      return statusLabels[status] ?? status ?? unsetLabel;
     }
     
     function formatPhase(phase) {
-      return phaseLabels[phase] ?? phase ?? "none";
+      return phaseLabels[phase] ?? phase ?? unsetLabel;
     }
     
     function formatTriggerState(triggerState) {
-      return triggerLabels[triggerState] ?? triggerState ?? "none";
+      return triggerLabels[triggerState] ?? triggerState ?? unsetLabel;
     }
     
     function formatGateStatus(status) {
-      return gateLabels[status] ?? status ?? "n/a";
+      return gateLabels[status] ?? status ?? unsetLabel;
     }
     
     function formatBooleanCheck(value) {
       if (value === null || typeof value === "undefined") {
-        return "n/a";
+        return "未確認";
       }
     
-      return value ? "true" : "false";
+      return value ? "OK" : "NG";
     }
     
-    function formatList(values) {
+    function formatFieldLabel(field) {
+      return fieldLabels[field] ?? field;
+    }
+    
+    function formatList(values, formatter = (value) => value) {
       if (!values || values.length === 0) {
-        return "none";
+        return emptyLabel;
       }
     
-      return values.join(" ; ");
+      return values.map((value) => formatter(value)).join(" / ");
     }
     
     function formatCodeLabel(value) {
       if (!value) {
-        return "none";
+        return unsetLabel;
       }
     
-      return String(value).replaceAll("_", " ");
+      return codeLabels[value] ?? String(value).replaceAll("_", " ");
     }
     
     function formatCodeList(values) {
-      if (!values || values.length === 0) {
-        return "none";
-      }
-    
-      return values.map((value) => formatCodeLabel(value)).join(" ; ");
+      return formatList(values, formatCodeLabel);
     }
     
     function buildPriceGateSummary(gate, fallbackPolicy) {
       if (!gate) {
-        return `policy: ${fallbackPolicy}`;
+        return `方針: ${formatCodeLabel(fallbackPolicy)}`;
       }
     
       if (gate.overall_gate === "pass") {
-        return "pass";
+        return "通過";
       }
     
       if (gate.overall_gate === "unchecked") {
-        return "unchecked";
+        return "未確認";
       }
     
-      const suffix = gate.fail_reason_codes.length > 0 ? `: ${gate.fail_reason_codes.join(", ")}` : "";
-      return `fail${suffix}`;
+      const suffix = gate.fail_reason_codes.length > 0 ? `: ${formatCodeList(gate.fail_reason_codes)}` : "";
+      return `不通過${suffix}`;
     }
     
     function isDue(nextReviewAt, now) {
@@ -947,21 +1134,21 @@
     
     function formatMinuteGap(value) {
       if (value === null || typeof value === "undefined") {
-        return "n/a";
+        return unsetLabel;
       }
     
       const hours = Math.floor(value / 60);
       const minutes = value % 60;
     
       if (hours === 0) {
-        return `${minutes}m`;
+        return `${minutes}分`;
       }
     
       if (minutes === 0) {
-        return `${hours}h`;
+        return `${hours}時間`;
       }
     
-      return `${hours}h ${minutes}m`;
+      return `${hours}時間${minutes}分`;
     }
     
     function isSameTokyoDay(first, second) {
@@ -974,24 +1161,32 @@
     
     function buildPriceFreshnessSummary(view) {
       if (!view.linked_price_gate_id || view.linked_price_gate === null) {
-        return "Price not checked in the linked review.";
+        return "価格鮮度: 紐づくレビューでは価格確認がありません。";
       }
     
       if (view.linked_price_gate === "unchecked") {
-        return "Price still unchecked in the linked review.";
+        return "価格鮮度: 紐づくレビューでは価格条件が未確認です。";
       }
     
       const gapText = formatMinuteGap(view.gate_decision_gap_minutes);
     
       if (view.price_freshness_state === "fresh") {
-        return `Price fresh: checked ${gapText} before the latest decision.`;
+        return `価格鮮度: 新しい（最新判断の${gapText}前に確認）。`;
       }
     
       if (view.price_freshness_state === "aging") {
-        return `Price aging: checked ${gapText} before the latest decision.`;
+        return `価格鮮度: やや古い（最新判断の${gapText}前に確認）。`;
       }
     
-      return `Price stale: checked ${gapText} before the latest decision.`;
+      return `価格鮮度: 古い（最新判断の${gapText}前に確認）。`;
+    }
+    
+    function ensureSentence(value) {
+      if (!value) {
+        return "";
+      }
+    
+      return /[。.!?]$/.test(value) ? value : `${value}。`;
     }
     
     function buildDecisionSummary(view) {
@@ -999,38 +1194,36 @@
       const reasonDetail = view.latest_reason_detail ? formatCodeLabel(view.latest_reason_detail) : "";
       const failReasons = formatCodeList(view.linked_fail_reason_codes);
     
-      let label = "Why not now";
+      let label = "監視継続理由";
       let line = "";
     
       if (view.current_status === "eligible") {
-        label = "Why now";
+        label = "候補化理由";
         line =
           view.linked_trigger_state === "confirmed" && view.linked_price_gate === "pass"
-            ? "Trigger confirmed and price gate passed."
-            : `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+            ? "トリガー確認と価格条件通過が揃っています。"
+            : ensureSentence(`${reasonCode}${reasonDetail ? `: ${reasonDetail}` : ""}`);
       } else if (view.current_status === "rejected") {
+        label = "見送り理由";
         line =
           view.linked_price_gate === "fail"
-            ? failReasons !== "none"
-              ? `Price gate failed on ${failReasons}.`
-              : "Price gate failed."
-            : `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+            ? failReasons !== emptyLabel
+              ? `価格条件が不通過です（${failReasons}）。`
+              : "価格条件が不通過です。"
+            : ensureSentence(`${reasonCode}${reasonDetail ? `: ${reasonDetail}` : ""}`);
       } else if (view.current_status === "invalidated") {
-        label = "Kill switch";
-        line = reasonDetail || reasonCode;
-        if (!line.endsWith(".")) {
-          line = `${line}.`;
-        }
+        label = "失効理由";
+        line = ensureSentence(reasonDetail || reasonCode);
       } else if (view.linked_trigger_state === "confirmed" && (!view.linked_price_gate_id || view.linked_price_gate === "unchecked")) {
-        line = "Trigger confirmed, but price has not been checked yet.";
+        line = "トリガーは確認済みですが、価格条件はまだ未確認です。";
       } else if (view.linked_trigger_state === "partial") {
-        line = "Trigger is still partial.";
+        line = "トリガーはまだ一部成立です。";
       } else if (view.linked_trigger_state === "invalidated") {
-        line = "Latest linked observation already touched the kill switch.";
+        line = "最新観測で失効条件に触れています。";
       } else if (view.linked_snapshot_id) {
-        line = `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+        line = ensureSentence(`${reasonCode}${reasonDetail ? `: ${reasonDetail}` : ""}`);
       } else {
-        line = "No linked review yet.";
+        line = "まだ紐づくレビューがありません。";
       }
     
       const compact = `${label}: ${line}`;
@@ -1070,6 +1263,7 @@
       "formatTriggerState": formatTriggerState,
       "formatGateStatus": formatGateStatus,
       "formatBooleanCheck": formatBooleanCheck,
+      "formatFieldLabel": formatFieldLabel,
       "formatList": formatList,
       "formatCodeLabel": formatCodeLabel,
       "formatCodeList": formatCodeList,
@@ -1085,6 +1279,7 @@
     };
   },
   "src/lib/scenarioDraft.js": function(requireModule) {
+    const { formatCodeLabel, formatFieldLabel } = requireModule("src/lib/formatters.js");
     const scenarioFormOptions = {
       markets: ["nikkei225"],
       directions: ["downside", "upside"],
@@ -1166,14 +1361,18 @@
     function pushRequiredFieldErrors(draft, errors) {
       for (const field of requiredTextFields) {
         if (!draft[field]) {
-          errors.push(`${field} is required`);
+          errors.push(`${formatFieldLabel(field)}は必須です`);
         }
       }
     }
     
     function pushEnumError(field, value, allowedValues, errors) {
       if (!allowedValues.includes(value)) {
-        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+        errors.push(
+          `${formatFieldLabel(field)}は次のいずれかを選択してください: ${allowedValues
+            .map((allowedValue) => formatCodeLabel(allowedValue))
+            .join(" / ")}`
+        );
       }
     }
     
@@ -1229,7 +1428,7 @@
       pushEnumError("price_gate_policy", draft.price_gate_policy, scenarioFormOptions.priceGatePolicies, errors);
     
       if (draft.review_cadence.length === 0) {
-        errors.push("review_cadence requires at least one selection");
+        errors.push(`${formatFieldLabel("review_cadence")}を少なくとも1つ選択してください`);
       }
     
       return {
@@ -1488,7 +1687,7 @@
     return {};
   },
   "src/render/homePage.js": function(requireModule) {
-    const { buildDecisionSummary, buildPriceFreshnessSummary, escapeHtml, formatCodeLabel, formatCodeList, formatStatus, formatTimestamp, isSameTokyoDay } = requireModule("src/lib/formatters.js");
+    const { buildDecisionSummary, buildPriceFreshnessSummary, escapeHtml, formatCodeLabel, formatCodeList, formatFieldLabel, formatStatus, formatTimestamp, isSameTokyoDay } = requireModule("src/lib/formatters.js");
     const statusOrder = ["watch", "eligible", "rejected", "invalidated"];
     
     function groupByStatus(views) {
@@ -1502,8 +1701,8 @@
     function renderCard(view) {
       const decision = buildDecisionSummary(view);
       const evidenceLine = view.linked_snapshot_id
-        ? `Observed ${formatCodeList(view.linked_observed_signals)} | Sources ${formatCodeList(view.linked_source_refs)}`
-        : "Observed none | Sources none";
+        ? `観測: ${formatCodeList(view.linked_observed_signals)} / 参照: ${formatCodeList(view.linked_source_refs)}`
+        : "観測: なし / 参照: なし";
     
       return `
         <article class="scenario-card ${escapeHtml(view.current_status)}">
@@ -1514,7 +1713,7 @@
                 <span class="badge ${escapeHtml(view.current_status)}">${escapeHtml(formatStatus(view.current_status))}</span>
               </div>
             </div>
-            ${view.is_review_due ? '<span class="due-chip">due now</span>' : ""}
+            ${view.is_review_due ? '<span class="due-chip">要確認</span>' : ""}
           </div>
           <div class="decision-block">
             <p class="decision-kicker">${escapeHtml(decision.label)}</p>
@@ -1523,26 +1722,26 @@
             <p class="support-line">${escapeHtml(buildPriceFreshnessSummary(view))}</p>
           </div>
           <dl class="kv-list">
-            <div class="kv-item"><dt>market</dt><dd>${escapeHtml(view.market)}</dd></div>
-            <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(view.direction)}</dd></div>
-            <div class="kv-item"><dt>horizon</dt><dd>${escapeHtml(view.horizon_bucket)}</dd></div>
-            <div class="kv-item"><dt>trigger</dt><dd>${escapeHtml(view.observation_trigger)}</dd></div>
-            <div class="kv-item"><dt>flow</dt><dd>${escapeHtml(view.flow_chain)}</dd></div>
-            <div class="kv-item"><dt>price</dt><dd>${escapeHtml(view.card_price_gate_summary)}</dd></div>
-            <div class="kv-item"><dt>invalidation</dt><dd>${escapeHtml(view.invalidation_rule)}</dd></div>
-            <div class="kv-item"><dt>next_review</dt><dd>${escapeHtml(formatTimestamp(view.next_review_at))}</dd></div>
-            <div class="kv-item"><dt>event_risk</dt><dd>${escapeHtml(formatCodeLabel(view.linked_event_risk_today))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("market"))}</dt><dd>${escapeHtml(formatCodeLabel(view.market))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("direction"))}</dt><dd>${escapeHtml(formatCodeLabel(view.direction))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("horizon"))}</dt><dd>${escapeHtml(formatCodeLabel(view.horizon_bucket))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("trigger"))}</dt><dd>${escapeHtml(formatCodeLabel(view.observation_trigger))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("flow"))}</dt><dd>${escapeHtml(formatCodeLabel(view.flow_chain))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("price"))}</dt><dd>${escapeHtml(view.card_price_gate_summary)}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("invalidation"))}</dt><dd>${escapeHtml(formatCodeLabel(view.invalidation_rule))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("next_review"))}</dt><dd>${escapeHtml(formatTimestamp(view.next_review_at))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("event_risk"))}</dt><dd>${escapeHtml(formatCodeLabel(view.linked_event_risk_today))}</dd></div>
           </dl>
           <div class="card-actions">
-            <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">Open Detail</a>
-            <a class="card-link subtle" href="${buildReviewHref(view.scenario_id)}">Add Review</a>
+            <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">詳細を見る</a>
+            <a class="card-link subtle" href="${buildReviewHref(view.scenario_id)}">レビュー追加</a>
           </div>
         </article>
       `;
     }
     
     function renderStatusColumn(status, views) {
-      const cards = views.length > 0 ? views.map((view) => renderCard(view)).join("") : '<p class="empty-state">No scenarios in this status.</p>';
+      const cards = views.length > 0 ? views.map((view) => renderCard(view)).join("") : '<p class="empty-state">この状態のシナリオはありません。</p>';
     
       return `
         <section class="panel status-column ${escapeHtml(status)}">
@@ -1573,30 +1772,30 @@
           <section class="panel hero">
             <div class="hero-top">
               <div>
-                <p class="eyebrow">BranchFlow Prototype</p>
-                <h1>Conditional option-buying terminal</h1>
-                <p>Forecasts are out of scope. Home cards now surface why now / why not now, linked observation evidence, and whether the latest price check is still fresh enough to trust.</p>
+                <p class="eyebrow">BranchFlow 試作</p>
+                <h1>条件付きオプション買い端末</h1>
+                <p>予測は対象外です。ホームカードでは、候補化理由、監視継続や見送りの理由、紐づく観測根拠、価格チェックの鮮度を一目で確認できます。</p>
               </div>
-              <div class="timestamp">As of ${escapeHtml(formatTimestamp(asOf))}</div>
+              <div class="timestamp">${escapeHtml(formatTimestamp(asOf))} 時点</div>
             </div>
           </section>
     
           <section class="panel toolbar">
             <div class="toolbar-row">
               <div class="action-row">
-                <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
-                <a class="action ghost" href="${dailyReviewHref}">Daily Review</a>
+                <a class="action primary" href="./detail.html?mode=new">新規シナリオ</a>
+                <a class="action ghost" href="${dailyReviewHref}">日次レビュー</a>
               </div>
               <div class="action-row">
-                <button class="filter-button ${dueOnly ? "active" : ""}" type="button" data-filter="due">Only Due Now</button>
-                <button class="filter-button ${dueOnly ? "" : "active"}" type="button" data-filter="all">All Scenarios</button>
+                <button class="filter-button ${dueOnly ? "active" : ""}" type="button" data-filter="due">要確認のみ</button>
+                <button class="filter-button ${dueOnly ? "" : "active"}" type="button" data-filter="all">全シナリオ</button>
               </div>
             </div>
             <div class="metric-grid">
-              <div class="metric-card"><span>Due Now</span><strong>${dueNow}</strong></div>
-              <div class="metric-card"><span>Upcoming</span><strong>${upcoming}</strong></div>
-              <div class="metric-card"><span>No Trade Today</span><strong>${noTradeToday}</strong></div>
-              <div class="metric-card"><span>Invalidated Total</span><strong>${invalidatedTotal}</strong></div>
+              <div class="metric-card"><span>要確認</span><strong>${dueNow}</strong></div>
+              <div class="metric-card"><span>予定あり</span><strong>${upcoming}</strong></div>
+              <div class="metric-card"><span>本日見送り</span><strong>${noTradeToday}</strong></div>
+              <div class="metric-card"><span>累計失効</span><strong>${invalidatedTotal}</strong></div>
             </div>
           </section>
     
@@ -1606,22 +1805,22 @@
     
           <section id="entry-surfaces" class="entry-grid">
             <section class="panel entry-panel">
-              <h2 class="section-title">Scenario Form</h2>
-              <p class="section-copy">Live now: detail.html owns stable thesis create/edit, backed by a shared browser record store.</p>
+              <h2 class="section-title">シナリオ登録</h2>
+              <p class="section-copy">詳細画面から、固定的な仮説項目をブラウザ保存領域へ記録できます。</p>
               <ul class="summary-list">
-                <li><strong>Saved fields:</strong> market, direction, summary, horizon, trigger, flow, invalidation, cadence, tags, notes</li>
-                <li><strong>Open path:</strong> New Scenario on home, Edit Scenario on detail</li>
-                <li><strong>Persistence:</strong> localStorage snapshot shared across home/detail</li>
+                <li><strong>保存項目:</strong> 市場、方向、要約、監視期間、トリガー、展開連鎖、失効条件、見直し頻度、タグ、メモ</li>
+                <li><strong>導線:</strong> home の「新規シナリオ」、detail の「シナリオ編集」</li>
+                <li><strong>保存先:</strong> home/detail で共有されるブラウザ保存スナップショット</li>
               </ul>
             </section>
     
             <section class="panel entry-panel">
-              <h2 class="section-title">Daily Review Append</h2>
-              <p class="section-copy">Live now: each submit appends observation, gate, and status records together while keeping rejected vs invalidated reasons separable.</p>
+              <h2 class="section-title">日次レビュー追記</h2>
+              <p class="section-copy">1回の送信で観測、価格条件、状態変更をまとめて追記し、見送りと失効の理由を分けて残せます。</p>
               <ul class="summary-list">
-                <li><strong>Observation:</strong> snapshot, session phase, trigger state, observed signals</li>
-                <li><strong>Price gate:</strong> overall gate, fail reason codes, budget / IV checks</li>
-                <li><strong>Status event:</strong> from, to, reason_code, next_review_phase, next_review_at</li>
+                <li><strong>観測:</strong> 観測時刻、確認フェーズ、トリガー状態、観測シグナル</li>
+                <li><strong>価格条件:</strong> 総合判定、不通過理由、予算 / IV / スプレッド確認</li>
+                <li><strong>状態変更:</strong> 開始状態、更新後状態、理由コード、次回確認フェーズ、次回確認時刻</li>
               </ul>
             </section>
           </section>

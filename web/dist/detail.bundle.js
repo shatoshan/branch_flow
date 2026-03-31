@@ -412,7 +412,7 @@
     };
   },
   "src/lib/dailyReview.js": function(requireModule) {
-    const { compareDesc } = requireModule("src/lib/formatters.js");
+    const { compareDesc, formatCodeLabel, formatFieldLabel, formatGateStatus, formatPhase, formatStatus, formatTriggerState } = requireModule("src/lib/formatters.js");
     const { cloneRecords } = requireModule("src/lib/scenarioDraft.js");
     const dailyReviewFormOptions = {
       sessionPhases: ["morning", "intraday", "after_close", "weekly"],
@@ -553,14 +553,38 @@
     function pushRequiredFieldErrors(draft, errors) {
       for (const field of requiredDraftFields) {
         if (!draft[field]) {
-          errors.push(`${field} is required`);
+          errors.push(`${formatFieldLabel(field)}は必須です`);
         }
       }
     }
     
+    function formatAllowedValue(field, value) {
+      if (field === "from_status" || field === "to_status") {
+        return formatStatus(value);
+      }
+    
+      if (field === "session_phase" || field === "next_review_phase") {
+        return formatPhase(value);
+      }
+    
+      if (field === "trigger_state") {
+        return formatTriggerState(value);
+      }
+    
+      if (field === "overall_gate") {
+        return formatGateStatus(value);
+      }
+    
+      return formatCodeLabel(value);
+    }
+    
     function pushEnumError(field, value, allowedValues, errors) {
       if (!allowedValues.includes(value)) {
-        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+        errors.push(
+          `${formatFieldLabel(field)}は次のいずれかを選択してください: ${allowedValues
+            .map((allowedValue) => formatAllowedValue(field, allowedValue))
+            .join(" / ")}`
+        );
       }
     }
     
@@ -570,7 +594,7 @@
       }
     
       if (Number.isNaN(new Date(value).getTime())) {
-        errors.push(`${field} must be a valid ISO 8601 timestamp`);
+        errors.push(`${formatFieldLabel(field)}は有効な ISO 8601 タイムスタンプで入力してください`);
       }
     }
     
@@ -590,21 +614,31 @@
     
       for (const field of dailyReviewFormOptions.gateCheckFields) {
         if (draft[field] === null) {
-          errors.push(`${field} must be set when overall_gate is pass or fail`);
+          errors.push(
+            `${formatFieldLabel(field)}は${formatFieldLabel("overall_gate")}が「${formatGateStatus("pass")}」または「${formatGateStatus("fail")}」のとき必須です`
+          );
         }
       }
     
       if (draft.overall_gate === "pass" && draft.fail_reason_codes.length > 0) {
-        errors.push("fail_reason_codes must be empty when overall_gate is pass");
+        errors.push(
+          `${formatFieldLabel("overall_gate")}が「${formatGateStatus("pass")}」のとき、${formatFieldLabel("fail_reason_codes")}は空にしてください`
+        );
       }
     
       if (draft.overall_gate === "fail" && draft.fail_reason_codes.length === 0) {
-        errors.push("fail_reason_codes requires at least one selection when overall_gate is fail");
+        errors.push(
+          `${formatFieldLabel("overall_gate")}が「${formatGateStatus("fail")}」のとき、${formatFieldLabel("fail_reason_codes")}を少なくとも1つ選択してください`
+        );
       }
     
       for (const failReason of draft.fail_reason_codes) {
         if (!dailyReviewFormOptions.failReasonCodes.includes(failReason)) {
-          errors.push(`fail_reason_codes must be one of: ${dailyReviewFormOptions.failReasonCodes.join(", ")}`);
+          errors.push(
+            `${formatFieldLabel("fail_reason_codes")}は次のいずれかを選択してください: ${dailyReviewFormOptions.failReasonCodes
+              .map((value) => formatCodeLabel(value))
+              .join(" / ")}`
+          );
           break;
         }
       }
@@ -612,11 +646,11 @@
     
     function pushTransitionErrors(draft, errors) {
       if (draft.from_status === "invalidated" && draft.to_status !== "invalidated") {
-        errors.push("invalidated scenarios can only append another invalidated status event");
+        errors.push("失効済みシナリオには失効状態のみ追記できます");
       }
     
       if (draft.to_status === "eligible" && draft.overall_gate !== "pass") {
-        errors.push("to_status eligible requires overall_gate pass");
+        errors.push("更新後状態を「候補」にするには、総合判定が「通過」である必要があります");
       }
     }
     
@@ -701,7 +735,7 @@
       pushRequiredFieldErrors(draft, errors);
     
       if (!scenario) {
-        errors.push("scenario_id must refer to an existing scenario");
+        errors.push("シナリオIDは既存シナリオを指定してください");
       }
     
       pushEnumError("from_status", draft.from_status, dailyReviewFormOptions.statusOptions, errors);
@@ -810,30 +844,183 @@
     };
   },
   "src/lib/formatters.js": function(requireModule) {
+    const unsetLabel = "未設定";
+    const emptyLabel = "なし";
+    
     const statusLabels = {
-      watch: "Watch",
-      eligible: "Eligible",
-      rejected: "Rejected",
-      invalidated: "Invalidated"
+      watch: "監視",
+      eligible: "候補",
+      rejected: "見送り",
+      invalidated: "失効"
     };
     
     const phaseLabels = {
-      morning: "Morning",
-      intraday: "Intraday",
-      after_close: "After Close",
-      weekly: "Weekly"
+      morning: "朝",
+      intraday: "場中",
+      after_close: "引け後",
+      weekly: "週次"
     };
     
     const triggerLabels = {
-      partial: "Partial",
-      confirmed: "Confirmed",
-      invalidated: "Invalidated"
+      partial: "一部成立",
+      confirmed: "確認済み",
+      invalidated: "失効接触"
     };
     
     const gateLabels = {
-      pass: "Pass",
-      fail: "Fail",
-      unchecked: "Unchecked"
+      pass: "通過",
+      fail: "不通過",
+      unchecked: "未確認"
+    };
+    
+    const fieldLabels = {
+      scenario_id: "シナリオID",
+      market: "市場",
+      direction: "方向",
+      scenario_summary: "シナリオ要約",
+      horizon_bucket: "監視期間",
+      entry_window: "仕掛け期間",
+      observation_trigger: "観測トリガー",
+      flow_chain: "展開連鎖",
+      price_gate_policy: "価格ガード方針",
+      invalidation_rule: "失効条件",
+      review_cadence: "見直し頻度",
+      tags: "タグ",
+      notes: "メモ",
+      from_status: "開始状態",
+      observed_at: "観測時刻",
+      session_phase: "確認フェーズ",
+      trigger_state: "トリガー状態",
+      observed_signals: "観測シグナル",
+      event_risk_today: "当日イベント",
+      market_note: "市況メモ",
+      operator_action: "オペレーター判断",
+      source_refs: "参照ソース",
+      checked_at: "価格確認時刻",
+      expiry_bucket_ok: "期限条件",
+      spread_ok: "スプレッド",
+      premium_within_budget: "予算内",
+      iv_event_heat_ok: "IV過熱",
+      theme_cooldown_ok: "テーマ間隔",
+      overall_gate: "総合判定",
+      fail_reason_codes: "不通過理由",
+      gate_note: "価格メモ",
+      changed_at: "状態更新時刻",
+      to_status: "更新後状態",
+      reason_code: "理由コード",
+      reason_detail: "理由補足",
+      next_review_phase: "次回確認フェーズ",
+      next_review_at: "次回確認時刻",
+      horizon: "監視期間",
+      trigger: "観測トリガー",
+      flow: "展開連鎖",
+      price: "価格条件",
+      invalidation: "失効条件",
+      next_review: "次回確認",
+      event_risk: "当日イベント",
+      decision_at: "判断時刻",
+      linked_snapshot_at: "参照観測時刻",
+      snapshot_gap: "観測との時差",
+      linked_gate_at: "参照価格時刻",
+      gate_gap: "価格との時差",
+      linked_price_gate: "参照価格判定",
+      fail_reasons: "不通過理由",
+      latest_reason_code: "最新理由",
+      latest_reason_detail: "最新補足",
+      linked_gate_note: "参照価格メモ"
+    };
+    
+    const codeLabels = {
+      nikkei225: "日経225",
+      downside: "下落",
+      upside: "上昇",
+      "1d_2w": "1日-2週",
+      same_day: "当日",
+      same_week: "同週",
+      next_3_sessions: "次の3セッション",
+      next_5_sessions: "次の5セッション",
+      standard_min_gate: "標準価格ガード",
+      event_guarded_gate: "イベント警戒ガード",
+      seed_status: "初期状態",
+      trigger_pending: "トリガー待ち",
+      trigger_confirmed: "トリガー確認",
+      price_gate_pass: "価格条件通過",
+      price_gate_fail: "価格条件不通過",
+      thesis_broken: "仮説失効",
+      time_expired: "時間切れ",
+      manual_archive: "手動アーカイブ",
+      expiry_too_short: "期限が短い",
+      spread_too_wide: "スプレッドが広い",
+      premium_over_budget: "プレミアムが予算超過",
+      iv_event_hot: "IVが過熱",
+      theme_cooldown: "テーマ間隔不足",
+      trigger_confirmed_and_gate_passed: "トリガー確認と価格条件通過が揃った",
+      pressure_remains_but_not_clean_enough_to_promote: "下押しは残るが候補化には不十分",
+      iv_event_hot_and_spread_too_wide: "IV過熱とスプレッド拡大",
+      support_recovered_and_breadth_turned: "サポート回復と内部改善",
+      target_put_premium_exceeded_daily_loss_budget: "プットプレミアムが日次損失予算を超過",
+      near_term_puts_remained_inside_daily_risk_budget: "近期限プットは日次リスク予算内",
+      event_premium_spike_removed_edge_from_downside_hedge: "イベント前のプレミアム上昇で優位性が消失",
+      none_major_before_open: "大きな予定なし（寄り前）",
+      us_data_later: "米指標あり（後半）",
+      us_data_pending: "米指標待ち",
+      none_major: "大きな予定なし",
+      scheduled_us_macro_event: "予定済み米マクロイベント",
+      keep_watch: "監視継続",
+      check_price_gate: "価格確認",
+      reset_to_watch: "監視へ戻す",
+      stay_alert: "警戒継続",
+      promote_eligible: "候補化",
+      keep_rejected: "見送り継続",
+      watch_for_invalidation: "失効警戒",
+      invalidate: "失効",
+      futures_board: "先物ボード",
+      fx_board: "FXボード",
+      rates_dashboard: "金利ダッシュボード",
+      breadth_sheet: "騰落シート",
+      nky_futures: "日経先物",
+      cash_close: "現物引け",
+      cash_open: "現物寄り",
+      cash_chart: "現物チャート",
+      vol_board: "ボラボード",
+      macro_calendar: "マクロカレンダー",
+      options_chain: "オプションチェーン",
+      us10y_up: "米10年金利上昇",
+      usd_jpy_down: "ドル円下落",
+      nky_futures_soft: "日経先物軟調",
+      usd_jpy_break: "ドル円下抜け",
+      exporters_weak: "輸出株軟調",
+      breadth_soft: "騰落軟化",
+      close_above_low: "安値引け回避",
+      pressure_remains: "下押し継続",
+      yen_firm: "円高維持",
+      gap_down_open: "ギャップダウン寄り",
+      risk_off_breadth: "リスクオフ主導",
+      weak_opening_bid: "寄り後の買い弱い",
+      first_hour_reclaim_failed: "初動リクレイム失敗",
+      futures_sell_programs: "先物売りプログラム",
+      banks_weak: "銀行株軟調",
+      event_calendar_dense: "イベント日程密集",
+      put_skew_up: "プットスキュー上昇",
+      term_structure_firm: "期間構造高止まり",
+      spread_widening: "スプレッド拡大",
+      iv_jump: "IV急騰",
+      headline_risk_unchanged: "ヘッドライン不安継続",
+      prior_support_break: "既存サポート割れ",
+      breadth_deteriorates: "騰落悪化",
+      buyers_absent: "買い手不在",
+      support_recovers: "サポート回復",
+      breadth_turns: "騰落改善",
+      sellers_stall: "売り鈍化",
+      overnight_rates_repricing_persisted: "寄り前も金利再評価が継続",
+      cash_market_failed_to_reclaim_opening_gap: "現物は寄りギャップを埋め戻せず",
+      sell_pressure_remained_but_no_clean_close_break: "下押しは残るが引けの明確な崩れなし",
+      open_failed_to_fill_gap_in_first_minutes: "寄り直後もギャップを埋められず",
+      rebound_attempt_stalled_under_prior_range: "戻りは前日レンジ下で失速",
+      hedge_demand_arrived_before_open: "寄り前からヘッジ需要が流入",
+      option_market_overheated_relative_to_thesis_quality: "オプション価格が仮説の質に対して過熱",
+      support_break_needs_follow_through: "サポート割れ後の追随売り待ち",
+      thesis_lost_edge_after_support_recovery: "サポート回復で仮説優位が消失"
     };
     
     const tokyoDayFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -854,7 +1041,7 @@
     
     function formatTimestamp(value) {
       if (!value) {
-        return "none";
+        return unsetLabel;
       }
     
       return new Intl.DateTimeFormat("ja-JP", {
@@ -865,68 +1052,68 @@
     }
     
     function formatStatus(status) {
-      return statusLabels[status] ?? status;
+      return statusLabels[status] ?? status ?? unsetLabel;
     }
     
     function formatPhase(phase) {
-      return phaseLabels[phase] ?? phase ?? "none";
+      return phaseLabels[phase] ?? phase ?? unsetLabel;
     }
     
     function formatTriggerState(triggerState) {
-      return triggerLabels[triggerState] ?? triggerState ?? "none";
+      return triggerLabels[triggerState] ?? triggerState ?? unsetLabel;
     }
     
     function formatGateStatus(status) {
-      return gateLabels[status] ?? status ?? "n/a";
+      return gateLabels[status] ?? status ?? unsetLabel;
     }
     
     function formatBooleanCheck(value) {
       if (value === null || typeof value === "undefined") {
-        return "n/a";
+        return "未確認";
       }
     
-      return value ? "true" : "false";
+      return value ? "OK" : "NG";
     }
     
-    function formatList(values) {
+    function formatFieldLabel(field) {
+      return fieldLabels[field] ?? field;
+    }
+    
+    function formatList(values, formatter = (value) => value) {
       if (!values || values.length === 0) {
-        return "none";
+        return emptyLabel;
       }
     
-      return values.join(" ; ");
+      return values.map((value) => formatter(value)).join(" / ");
     }
     
     function formatCodeLabel(value) {
       if (!value) {
-        return "none";
+        return unsetLabel;
       }
     
-      return String(value).replaceAll("_", " ");
+      return codeLabels[value] ?? String(value).replaceAll("_", " ");
     }
     
     function formatCodeList(values) {
-      if (!values || values.length === 0) {
-        return "none";
-      }
-    
-      return values.map((value) => formatCodeLabel(value)).join(" ; ");
+      return formatList(values, formatCodeLabel);
     }
     
     function buildPriceGateSummary(gate, fallbackPolicy) {
       if (!gate) {
-        return `policy: ${fallbackPolicy}`;
+        return `方針: ${formatCodeLabel(fallbackPolicy)}`;
       }
     
       if (gate.overall_gate === "pass") {
-        return "pass";
+        return "通過";
       }
     
       if (gate.overall_gate === "unchecked") {
-        return "unchecked";
+        return "未確認";
       }
     
-      const suffix = gate.fail_reason_codes.length > 0 ? `: ${gate.fail_reason_codes.join(", ")}` : "";
-      return `fail${suffix}`;
+      const suffix = gate.fail_reason_codes.length > 0 ? `: ${formatCodeList(gate.fail_reason_codes)}` : "";
+      return `不通過${suffix}`;
     }
     
     function isDue(nextReviewAt, now) {
@@ -947,21 +1134,21 @@
     
     function formatMinuteGap(value) {
       if (value === null || typeof value === "undefined") {
-        return "n/a";
+        return unsetLabel;
       }
     
       const hours = Math.floor(value / 60);
       const minutes = value % 60;
     
       if (hours === 0) {
-        return `${minutes}m`;
+        return `${minutes}分`;
       }
     
       if (minutes === 0) {
-        return `${hours}h`;
+        return `${hours}時間`;
       }
     
-      return `${hours}h ${minutes}m`;
+      return `${hours}時間${minutes}分`;
     }
     
     function isSameTokyoDay(first, second) {
@@ -974,24 +1161,32 @@
     
     function buildPriceFreshnessSummary(view) {
       if (!view.linked_price_gate_id || view.linked_price_gate === null) {
-        return "Price not checked in the linked review.";
+        return "価格鮮度: 紐づくレビューでは価格確認がありません。";
       }
     
       if (view.linked_price_gate === "unchecked") {
-        return "Price still unchecked in the linked review.";
+        return "価格鮮度: 紐づくレビューでは価格条件が未確認です。";
       }
     
       const gapText = formatMinuteGap(view.gate_decision_gap_minutes);
     
       if (view.price_freshness_state === "fresh") {
-        return `Price fresh: checked ${gapText} before the latest decision.`;
+        return `価格鮮度: 新しい（最新判断の${gapText}前に確認）。`;
       }
     
       if (view.price_freshness_state === "aging") {
-        return `Price aging: checked ${gapText} before the latest decision.`;
+        return `価格鮮度: やや古い（最新判断の${gapText}前に確認）。`;
       }
     
-      return `Price stale: checked ${gapText} before the latest decision.`;
+      return `価格鮮度: 古い（最新判断の${gapText}前に確認）。`;
+    }
+    
+    function ensureSentence(value) {
+      if (!value) {
+        return "";
+      }
+    
+      return /[。.!?]$/.test(value) ? value : `${value}。`;
     }
     
     function buildDecisionSummary(view) {
@@ -999,38 +1194,36 @@
       const reasonDetail = view.latest_reason_detail ? formatCodeLabel(view.latest_reason_detail) : "";
       const failReasons = formatCodeList(view.linked_fail_reason_codes);
     
-      let label = "Why not now";
+      let label = "監視継続理由";
       let line = "";
     
       if (view.current_status === "eligible") {
-        label = "Why now";
+        label = "候補化理由";
         line =
           view.linked_trigger_state === "confirmed" && view.linked_price_gate === "pass"
-            ? "Trigger confirmed and price gate passed."
-            : `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+            ? "トリガー確認と価格条件通過が揃っています。"
+            : ensureSentence(`${reasonCode}${reasonDetail ? `: ${reasonDetail}` : ""}`);
       } else if (view.current_status === "rejected") {
+        label = "見送り理由";
         line =
           view.linked_price_gate === "fail"
-            ? failReasons !== "none"
-              ? `Price gate failed on ${failReasons}.`
-              : "Price gate failed."
-            : `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+            ? failReasons !== emptyLabel
+              ? `価格条件が不通過です（${failReasons}）。`
+              : "価格条件が不通過です。"
+            : ensureSentence(`${reasonCode}${reasonDetail ? `: ${reasonDetail}` : ""}`);
       } else if (view.current_status === "invalidated") {
-        label = "Kill switch";
-        line = reasonDetail || reasonCode;
-        if (!line.endsWith(".")) {
-          line = `${line}.`;
-        }
+        label = "失効理由";
+        line = ensureSentence(reasonDetail || reasonCode);
       } else if (view.linked_trigger_state === "confirmed" && (!view.linked_price_gate_id || view.linked_price_gate === "unchecked")) {
-        line = "Trigger confirmed, but price has not been checked yet.";
+        line = "トリガーは確認済みですが、価格条件はまだ未確認です。";
       } else if (view.linked_trigger_state === "partial") {
-        line = "Trigger is still partial.";
+        line = "トリガーはまだ一部成立です。";
       } else if (view.linked_trigger_state === "invalidated") {
-        line = "Latest linked observation already touched the kill switch.";
+        line = "最新観測で失効条件に触れています。";
       } else if (view.linked_snapshot_id) {
-        line = `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+        line = ensureSentence(`${reasonCode}${reasonDetail ? `: ${reasonDetail}` : ""}`);
       } else {
-        line = "No linked review yet.";
+        line = "まだ紐づくレビューがありません。";
       }
     
       const compact = `${label}: ${line}`;
@@ -1070,6 +1263,7 @@
       "formatTriggerState": formatTriggerState,
       "formatGateStatus": formatGateStatus,
       "formatBooleanCheck": formatBooleanCheck,
+      "formatFieldLabel": formatFieldLabel,
       "formatList": formatList,
       "formatCodeLabel": formatCodeLabel,
       "formatCodeList": formatCodeList,
@@ -1085,6 +1279,7 @@
     };
   },
   "src/lib/scenarioDraft.js": function(requireModule) {
+    const { formatCodeLabel, formatFieldLabel } = requireModule("src/lib/formatters.js");
     const scenarioFormOptions = {
       markets: ["nikkei225"],
       directions: ["downside", "upside"],
@@ -1166,14 +1361,18 @@
     function pushRequiredFieldErrors(draft, errors) {
       for (const field of requiredTextFields) {
         if (!draft[field]) {
-          errors.push(`${field} is required`);
+          errors.push(`${formatFieldLabel(field)}は必須です`);
         }
       }
     }
     
     function pushEnumError(field, value, allowedValues, errors) {
       if (!allowedValues.includes(value)) {
-        errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+        errors.push(
+          `${formatFieldLabel(field)}は次のいずれかを選択してください: ${allowedValues
+            .map((allowedValue) => formatCodeLabel(allowedValue))
+            .join(" / ")}`
+        );
       }
     }
     
@@ -1229,7 +1428,7 @@
       pushEnumError("price_gate_policy", draft.price_gate_policy, scenarioFormOptions.priceGatePolicies, errors);
     
       if (draft.review_cadence.length === 0) {
-        errors.push("review_cadence requires at least one selection");
+        errors.push(`${formatFieldLabel("review_cadence")}を少なくとも1つ選択してください`);
       }
     
       return {
@@ -1597,7 +1796,7 @@
     return {};
   },
   "src/render/dailyReviewForm.js": function(requireModule) {
-    const { escapeHtml, formatGateStatus, formatPhase, formatStatus, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { escapeHtml, formatCodeLabel, formatFieldLabel, formatGateStatus, formatPhase, formatStatus, formatTriggerState } = requireModule("src/lib/formatters.js");
     const { dailyReviewFormOptions } = requireModule("src/lib/dailyReview.js");
     function renderErrors(errors) {
       if (!errors || errors.length === 0) {
@@ -1606,7 +1805,7 @@
     
       return `
         <div class="form-errors" role="alert">
-          <p class="form-errors-title">Fix the following before saving.</p>
+          <p class="form-errors-title">保存前に次を修正してください。</p>
           <ul class="form-error-list">
             ${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}
           </ul>
@@ -1645,9 +1844,9 @@
     
     function renderTriStateOptions(selectedValue) {
       const options = [
-        { value: "", label: "Unset" },
-        { value: "true", label: "Yes" },
-        { value: "false", label: "No" }
+        { value: "", label: "未設定" },
+        { value: "true", label: "OK" },
+        { value: "false", label: "NG" }
       ];
     
       return options
@@ -1665,7 +1864,7 @@
           return `
             <label class="checkbox-option">
               <input type="checkbox" name="fail_reason_codes" value="${escapeHtml(value)}"${isChecked} />
-              <span>${escapeHtml(value)}</span>
+              <span>${escapeHtml(formatCodeLabel(value))}</span>
             </label>
           `;
         })
@@ -1680,179 +1879,179 @@
         <section class="panel detail-panel form-panel">
           <div class="form-shell">
             <div>
-              <h2 class="section-title">Add Daily Review</h2>
-              <p class="section-copy">Append one observation snapshot, one price gate, and one status event in the same submit. Review IDs are assigned automatically.</p>
+              <h2 class="section-title">日次レビュー追加</h2>
+              <p class="section-copy">1回の送信で観測、価格条件、状態変更をまとめて追記します。レビューIDは自動採番されます。</p>
             </div>
             <div class="detail-actions">
-              <a class="action ghost" href="${cancelHref}">Cancel</a>
+              <a class="action ghost" href="${cancelHref}">キャンセル</a>
             </div>
           </div>
           ${renderErrors(errors)}
           <form class="scenario-form" data-review-form novalidate>
             <div class="form-grid">
               <label class="field">
-                <span>scenario_id</span>
+                <span>${formatFieldLabel("scenario_id")}</span>
                 <input type="text" name="scenario_id" value="${escapeHtml(draft.scenario_id)}" readonly="readonly" aria-readonly="true" />
               </label>
     
               <label class="field">
-                <span>from_status</span>
+                <span>${formatFieldLabel("from_status")}</span>
                 <input type="text" name="from_status" value="${escapeHtml(formatStatus(draft.from_status))}" readonly="readonly" aria-readonly="true" />
-                <small class="field-hint">Derived from the latest status event or seed status.</small>
+                <small class="field-hint">最新状態、または初期状態から自動計算されます。</small>
               </label>
     
               <label class="field">
-                <span>observed_at</span>
+                <span>${formatFieldLabel("observed_at")}</span>
                 <input type="text" name="observed_at" value="${escapeHtml(draft.observed_at)}" placeholder="2026-03-25T08:55:00+09:00" />
               </label>
     
               <label class="field">
-                <span>session_phase</span>
+                <span>${formatFieldLabel("session_phase")}</span>
                 <select name="session_phase">
                   ${renderSelectOptions("sessionPhases", draft.session_phase)}
                 </select>
               </label>
     
               <label class="field">
-                <span>trigger_state</span>
+                <span>${formatFieldLabel("trigger_state")}</span>
                 <select name="trigger_state">
                   ${renderSelectOptions("triggerStates", draft.trigger_state)}
                 </select>
               </label>
     
               <label class="field">
-                <span>checked_at</span>
+                <span>${formatFieldLabel("checked_at")}</span>
                 <input type="text" name="checked_at" value="${escapeHtml(draft.checked_at)}" placeholder="2026-03-25T08:58:00+09:00" />
               </label>
     
               <label class="field">
-                <span>overall_gate</span>
+                <span>${formatFieldLabel("overall_gate")}</span>
                 <select name="overall_gate">
                   ${renderSelectOptions("gateStatuses", draft.overall_gate)}
                 </select>
-                <small class="field-hint">Use unchecked to append a review without a confirmed option check yet.</small>
+                <small class="field-hint">価格未確認のレビューを残す場合は「未確認」を選びます。</small>
               </label>
     
               <label class="field">
-                <span>changed_at</span>
+                <span>${formatFieldLabel("changed_at")}</span>
                 <input type="text" name="changed_at" value="${escapeHtml(draft.changed_at)}" placeholder="2026-03-25T09:00:00+09:00" />
               </label>
     
               <label class="field">
-                <span>to_status</span>
+                <span>${formatFieldLabel("to_status")}</span>
                 <select name="to_status">
                   ${renderSelectOptions("statusOptions", draft.to_status)}
                 </select>
               </label>
     
               <label class="field">
-                <span>reason_code</span>
+                <span>${formatFieldLabel("reason_code")}</span>
                 <select name="reason_code">
                   ${dailyReviewFormOptions.reasonCodes
                     .map((value) => {
                       const isSelected = value === draft.reason_code ? ' selected="selected"' : "";
-                      return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(value)}</option>`;
+                      return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(formatCodeLabel(value))}</option>`;
                     })
                     .join("")}
                 </select>
               </label>
     
               <label class="field">
-                <span>next_review_phase</span>
+                <span>${formatFieldLabel("next_review_phase")}</span>
                 <select name="next_review_phase">
                   ${renderSelectOptions("sessionPhases", draft.next_review_phase)}
                 </select>
               </label>
     
               <label class="field">
-                <span>next_review_at</span>
+                <span>${formatFieldLabel("next_review_at")}</span>
                 <input type="text" name="next_review_at" value="${escapeHtml(draft.next_review_at)}" placeholder="2026-03-25T15:10:00+09:00" />
               </label>
     
               <label class="field field-wide">
-                <span>observed_signals</span>
+                <span>${formatFieldLabel("observed_signals")}</span>
                 <input type="text" name="observed_signals" value="${observedSignals}" placeholder="usd_jpy_break, breadth_soft, exporters_weak" />
-                <small class="field-hint">Comma or semicolon separated.</small>
+                <small class="field-hint">カンマまたはセミコロン区切りで入力します。</small>
               </label>
     
               <label class="field">
-                <span>event_risk_today</span>
+                <span>${formatFieldLabel("event_risk_today")}</span>
                 <input type="text" name="event_risk_today" value="${escapeHtml(draft.event_risk_today)}" placeholder="none_major" />
               </label>
     
               <label class="field">
-                <span>operator_action</span>
+                <span>${formatFieldLabel("operator_action")}</span>
                 <input type="text" name="operator_action" value="${escapeHtml(draft.operator_action)}" placeholder="keep_watch" />
               </label>
     
               <label class="field field-wide">
-                <span>source_refs</span>
+                <span>${formatFieldLabel("source_refs")}</span>
                 <input type="text" name="source_refs" value="${sourceRefs}" placeholder="fx_board, breadth_sheet" />
-                <small class="field-hint">Comma or semicolon separated.</small>
+                <small class="field-hint">カンマまたはセミコロン区切りで入力します。</small>
               </label>
     
               <label class="field field-wide">
-                <span>market_note</span>
-                <textarea name="market_note" rows="3" placeholder="market context observed during the review">${escapeHtml(draft.market_note)}</textarea>
+                <span>${formatFieldLabel("market_note")}</span>
+                <textarea name="market_note" rows="3" placeholder="review_market_context_note">${escapeHtml(draft.market_note)}</textarea>
               </label>
     
               <label class="field">
-                <span>expiry_bucket_ok</span>
+                <span>${formatFieldLabel("expiry_bucket_ok")}</span>
                 <select name="expiry_bucket_ok">
                   ${renderTriStateOptions(draft.expiry_bucket_ok)}
                 </select>
               </label>
     
               <label class="field">
-                <span>spread_ok</span>
+                <span>${formatFieldLabel("spread_ok")}</span>
                 <select name="spread_ok">
                   ${renderTriStateOptions(draft.spread_ok)}
                 </select>
               </label>
     
               <label class="field">
-                <span>premium_within_budget</span>
+                <span>${formatFieldLabel("premium_within_budget")}</span>
                 <select name="premium_within_budget">
                   ${renderTriStateOptions(draft.premium_within_budget)}
                 </select>
               </label>
     
               <label class="field">
-                <span>iv_event_heat_ok</span>
+                <span>${formatFieldLabel("iv_event_heat_ok")}</span>
                 <select name="iv_event_heat_ok">
                   ${renderTriStateOptions(draft.iv_event_heat_ok)}
                 </select>
               </label>
     
               <label class="field">
-                <span>theme_cooldown_ok</span>
+                <span>${formatFieldLabel("theme_cooldown_ok")}</span>
                 <select name="theme_cooldown_ok">
                   ${renderTriStateOptions(draft.theme_cooldown_ok)}
                 </select>
               </label>
     
               <fieldset class="field field-wide">
-                <legend>fail_reason_codes</legend>
+                <legend>${formatFieldLabel("fail_reason_codes")}</legend>
                 <div class="checkbox-grid">
                   ${renderFailReasonOptions(draft.fail_reason_codes)}
                 </div>
-                <small class="field-hint">Leave empty when overall_gate is pass or unchecked.</small>
+                <small class="field-hint">総合判定が「通過」または「未確認」のときは空で構いません。</small>
               </fieldset>
     
               <label class="field field-wide">
-                <span>gate_note</span>
-                <textarea name="gate_note" rows="3" placeholder="why the option check passed, failed, or stayed unchecked">${escapeHtml(draft.gate_note)}</textarea>
+                <span>${formatFieldLabel("gate_note")}</span>
+                <textarea name="gate_note" rows="3" placeholder="gate_check_note">${escapeHtml(draft.gate_note)}</textarea>
               </label>
     
               <label class="field field-wide">
-                <span>reason_detail</span>
-                <textarea name="reason_detail" rows="3" placeholder="optional detail attached to the status event">${escapeHtml(draft.reason_detail)}</textarea>
+                <span>${formatFieldLabel("reason_detail")}</span>
+                <textarea name="reason_detail" rows="3" placeholder="optional_reason_detail">${escapeHtml(draft.reason_detail)}</textarea>
               </label>
             </div>
     
             <div class="form-actions">
-              <button class="action primary" type="submit">Append Daily Review</button>
-              <a class="action ghost" href="${cancelHref}">Cancel</a>
+              <button class="action primary" type="submit">日次レビューを追記</button>
+              <a class="action ghost" href="${cancelHref}">キャンセル</a>
             </div>
           </form>
         </section>
@@ -1864,22 +2063,22 @@
     };
   },
   "src/render/detailPage.js": function(requireModule) {
-    const { buildDecisionSummary, buildPriceFreshnessSummary, escapeHtml, formatBooleanCheck, formatCodeLabel, formatCodeList, formatGateStatus, formatList, formatMinuteGap, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { buildDecisionSummary, buildPriceFreshnessSummary, escapeHtml, formatBooleanCheck, formatCodeLabel, formatCodeList, formatFieldLabel, formatGateStatus, formatList, formatMinuteGap, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
     const { renderDailyReviewForm } = requireModule("src/render/dailyReviewForm.js");
     const { renderScenarioForm } = requireModule("src/render/scenarioForm.js");
     function renderSignals(signals) {
       if (!signals || signals.length === 0) {
-        return '<span class="signal-pill">none</span>';
+        return '<span class="signal-pill">なし</span>';
       }
     
-      return signals.map((signal) => `<span class="signal-pill">${escapeHtml(signal)}</span>`).join("");
+      return signals.map((signal) => `<span class="signal-pill">${escapeHtml(formatCodeLabel(signal))}</span>`).join("");
     }
     
     function renderPriceGate(priceGate) {
       if (!priceGate) {
         return `
           <div class="emphasis">
-            <p class="panel-copy">No price gate has been checked for this scenario. The home card falls back to the policy label until a review adds one.</p>
+            <p class="panel-copy">このシナリオではまだ価格確認がありません。レビューが追加されるまでは、一覧カードでは方針ラベルを表示します。</p>
           </div>
         `;
       }
@@ -1887,17 +2086,17 @@
       return `
         <div class="emphasis">
           <div class="kv-grid">
-            <div class="kv-item"><dt>checked_at</dt><dd>${escapeHtml(formatTimestamp(priceGate.checked_at))}</dd></div>
-            <div class="kv-item"><dt>overall_gate</dt><dd>${escapeHtml(formatGateStatus(priceGate.overall_gate))}</dd></div>
-            <div class="kv-item"><dt>fail_reason_codes</dt><dd>${escapeHtml(formatCodeList(priceGate.fail_reason_codes))}</dd></div>
-            <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(formatCodeLabel(priceGate.gate_note))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("checked_at"))}</dt><dd>${escapeHtml(formatTimestamp(priceGate.checked_at))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("overall_gate"))}</dt><dd>${escapeHtml(formatGateStatus(priceGate.overall_gate))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("fail_reason_codes"))}</dt><dd>${escapeHtml(formatCodeList(priceGate.fail_reason_codes))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("gate_note"))}</dt><dd>${escapeHtml(formatCodeLabel(priceGate.gate_note))}</dd></div>
           </div>
           <div class="kv-grid">
-            <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.expiry_bucket_ok))}</dd></div>
-            <div class="kv-item"><dt>spread_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.spread_ok))}</dd></div>
-            <div class="kv-item"><dt>premium_within_budget</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.premium_within_budget))}</dd></div>
-            <div class="kv-item"><dt>iv_event_heat_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.iv_event_heat_ok))}</dd></div>
-            <div class="kv-item"><dt>theme_cooldown_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.theme_cooldown_ok))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("expiry_bucket_ok"))}</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.expiry_bucket_ok))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("spread_ok"))}</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.spread_ok))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("premium_within_budget"))}</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.premium_within_budget))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("iv_event_heat_ok"))}</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.iv_event_heat_ok))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("theme_cooldown_ok"))}</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.theme_cooldown_ok))}</dd></div>
           </div>
         </div>
       `;
@@ -1918,9 +2117,9 @@
                     </div>
                     <div class="pill-row">${renderSignals(snapshot.observed_signals)}</div>
                     <div class="timeline-facts">
-                      <div class="kv-item"><dt>event_risk</dt><dd>${escapeHtml(formatCodeLabel(snapshot.event_risk_today))}</dd></div>
-                      <div class="kv-item"><dt>operator_action</dt><dd>${escapeHtml(formatCodeLabel(snapshot.operator_action))}</dd></div>
-                      <div class="kv-item"><dt>source_refs</dt><dd>${escapeHtml(formatCodeList(snapshot.source_refs))}</dd></div>
+                      <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("event_risk_today"))}</dt><dd>${escapeHtml(formatCodeLabel(snapshot.event_risk_today))}</dd></div>
+                      <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("operator_action"))}</dt><dd>${escapeHtml(formatCodeLabel(snapshot.operator_action))}</dd></div>
+                      <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("source_refs"))}</dt><dd>${escapeHtml(formatCodeList(snapshot.source_refs))}</dd></div>
                     </div>
                     <p class="timeline-note">${escapeHtml(formatCodeLabel(snapshot.market_note))}</p>
                   </li>
@@ -1929,7 +2128,7 @@
               .join("")}
           </ul>
         `
-        : '<p class="empty-state">No observations recorded yet.</p>';
+        : '<p class="empty-state">まだ観測は記録されていません。</p>';
     }
     
     function renderStatusHistory(statusEvents) {
@@ -1951,18 +2150,18 @@
               .join("")}
           </ul>
         `
-        : '<p class="empty-state">No status events recorded yet.</p>';
+        : '<p class="empty-state">まだ状態変更は記録されていません。</p>';
     }
     
     function renderMissingMessage() {
       return `
         <main class="detail-shell">
           <section class="panel detail-panel missing-message">
-            <h1>Scenario not found</h1>
-            <p class="panel-copy">Use the home screen to open an existing scenario detail, or start a new stable thesis record.</p>
+            <h1>シナリオが見つかりません</h1>
+            <p class="panel-copy">ホームから既存シナリオを開くか、新規シナリオを作成してください。</p>
             <div class="action-row centered-row">
-              <a class="back-link" href="./index.html">Back Home</a>
-              <a class="action primary" href="./detail.html?mode=new">New Scenario</a>
+              <a class="back-link" href="./index.html">ホームへ</a>
+              <a class="action primary" href="./detail.html?mode=new">新規シナリオ</a>
             </div>
           </section>
         </main>
@@ -1975,13 +2174,13 @@
           <section class="panel detail-header">
             <div class="detail-heading-row">
               <div class="detail-title">
-                <a class="back-link" href="./index.html">Back Home</a>
-                <p class="eyebrow">Scenario Form</p>
-                <h1>Create Scenario</h1>
-                <p>Stable thesis fields live here first. Daily review records stay append-only on the shared review surface.</p>
+                <a class="back-link" href="./index.html">ホームへ</a>
+                <p class="eyebrow">シナリオ登録</p>
+                <h1>新規シナリオ</h1>
+                <p>まずは固定的な仮説項目をここで登録します。日次レビュー履歴は別の追記専用画面に残ります。</p>
               </div>
               <div class="detail-actions">
-                <a class="action ghost" href="./index.html">Cancel</a>
+                <a class="action ghost" href="./index.html">キャンセル</a>
               </div>
             </div>
           </section>
@@ -1995,18 +2194,18 @@
           <section class="panel detail-header">
             <div class="detail-heading-row">
               <div class="detail-title">
-                <a class="back-link" href="./index.html">Back Home</a>
-                <p class="eyebrow">Daily Review</p>
+                <a class="back-link" href="./index.html">ホームへ</a>
+                <p class="eyebrow">日次レビュー</p>
                 <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
-                <p>Append a single review packet without mutating stable thesis fields.</p>
+                <p>固定的な仮説項目を変えずに、1件のレビュー記録を追記します。</p>
               </div>
               <div class="detail-actions">
-                <a class="action ghost" href="${cancelHref}">Cancel</a>
+                <a class="action ghost" href="${cancelHref}">キャンセル</a>
               </div>
             </div>
             <div class="headline-meta">
               <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
-              <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+              <span class="timestamp">次回確認 ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
             </div>
           </section>
         `;
@@ -2021,29 +2220,29 @@
         <section class="panel detail-header">
           <div class="detail-heading-row">
             <div class="detail-title">
-              <a class="back-link" href="./index.html">Back Home</a>
-              <p class="eyebrow">${isEditMode ? "Scenario Edit" : "Scenario Detail"}</p>
+              <a class="back-link" href="./index.html">ホームへ</a>
+              <p class="eyebrow">${isEditMode ? "シナリオ編集" : "シナリオ詳細"}</p>
               <h1>${escapeHtml(detail.scenario.scenario_id)}</h1>
               <p>${escapeHtml(
                 isEditMode
-                  ? "Update stable thesis fields without touching review history."
-                  : detail.scenario.scenario_summary
+                  ? "レビュー履歴には触れず、固定的な仮説項目だけを更新します。"
+                  : formatCodeLabel(detail.scenario.scenario_summary)
               )}</p>
             </div>
             <div class="detail-actions">
               ${
                 isEditMode
-                  ? `<a class="action ghost" href="${cancelHref}">Cancel</a>`
+                  ? `<a class="action ghost" href="${cancelHref}">キャンセル</a>`
                   : `
-                    <a class="action primary" href="${editHref}">Edit Scenario</a>
-                    <a class="action ghost" href="${reviewHref}">Add Daily Review</a>
+                    <a class="action primary" href="${editHref}">シナリオ編集</a>
+                    <a class="action ghost" href="${reviewHref}">レビュー追加</a>
                   `
               }
             </div>
           </div>
           <div class="headline-meta">
             <span class="badge ${escapeHtml(detail.currentView.current_status)}">${escapeHtml(formatStatus(detail.currentView.current_status))}</span>
-            <span class="timestamp">Next review ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
+            <span class="timestamp">次回確認 ${escapeHtml(formatTimestamp(detail.currentView.next_review_at))}</span>
           </div>
         </section>
       `;
@@ -2055,69 +2254,69 @@
     
       return `
         <section class="panel detail-panel">
-          <h2 class="section-title">Scenario Thesis</h2>
-          <p class="section-copy">Stable fields stay separate from daily review records.</p>
+          <h2 class="section-title">シナリオ仮説</h2>
+          <p class="section-copy">固定的な仮説項目は、日次レビュー履歴とは分けて管理します。</p>
           <div class="thesis-grid">
-            <div class="kv-item"><dt>market</dt><dd>${escapeHtml(detail.scenario.market)}</dd></div>
-            <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(detail.scenario.direction)}</dd></div>
-            <div class="kv-item"><dt>horizon_bucket</dt><dd>${escapeHtml(detail.scenario.horizon_bucket)}</dd></div>
-            <div class="kv-item"><dt>entry_window</dt><dd>${escapeHtml(detail.scenario.entry_window)}</dd></div>
-            <div class="kv-item"><dt>observation_trigger</dt><dd>${escapeHtml(detail.scenario.observation_trigger)}</dd></div>
-            <div class="kv-item"><dt>flow_chain</dt><dd>${escapeHtml(detail.scenario.flow_chain)}</dd></div>
-            <div class="kv-item"><dt>invalidation_rule</dt><dd>${escapeHtml(detail.scenario.invalidation_rule)}</dd></div>
-            <div class="kv-item"><dt>review_cadence</dt><dd>${escapeHtml(formatList(detail.scenario.review_cadence))}</dd></div>
-            <div class="kv-item"><dt>tags</dt><dd>${escapeHtml(formatList(detail.scenario.tags))}</dd></div>
-            <div class="kv-item"><dt>notes</dt><dd>${escapeHtml(detail.scenario.notes || "none")}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("market"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.market))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("direction"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.direction))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("horizon_bucket"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.horizon_bucket))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("entry_window"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.entry_window))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("observation_trigger"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.observation_trigger))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("flow_chain"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.flow_chain))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("invalidation_rule"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.invalidation_rule))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("review_cadence"))}</dt><dd>${escapeHtml(formatList(detail.scenario.review_cadence, formatPhase))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("tags"))}</dt><dd>${escapeHtml(formatList(detail.scenario.tags, formatCodeLabel))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("notes"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.scenario.notes))}</dd></div>
           </div>
         </section>
     
         <section class="panel detail-panel">
-          <h2 class="section-title">Current View</h2>
-          <p class="section-copy">Latest decision context comes from the newest status event and the observation / gate records linked from it.</p>
+          <h2 class="section-title">現在の見立て</h2>
+          <p class="section-copy">最新の状態変更に紐づく観測と価格条件から、現在の判断文脈を読めるようにします。</p>
           <div class="decision-block detail-decision-block">
             <p class="decision-kicker">${escapeHtml(decision.label)}</p>
             <p class="decision-line">${escapeHtml(decision.line)}</p>
             <p class="support-line">${escapeHtml(buildPriceFreshnessSummary(detail.currentView))}</p>
-            <p class="support-line">Kill switch: ${escapeHtml(formatCodeLabel(detail.scenario.invalidation_rule))}</p>
+            <p class="support-line">失効条件: ${escapeHtml(formatCodeLabel(detail.scenario.invalidation_rule))}</p>
           </div>
           <div class="current-grid">
-            <div class="kv-item"><dt>decision_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.decision_reference_at))}</dd></div>
-            <div class="kv-item"><dt>linked_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_snapshot_at))}</dd></div>
-            <div class="kv-item"><dt>snapshot_gap</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.snapshot_decision_gap_minutes))}</dd></div>
-            <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.linked_trigger_state))}</dd></div>
-            <div class="kv-item"><dt>observed_signals</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_observed_signals))}</dd></div>
-            <div class="kv-item"><dt>event_risk_today</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_event_risk_today))}</dd></div>
-            <div class="kv-item"><dt>operator_action</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_operator_action))}</dd></div>
-            <div class="kv-item"><dt>source_refs</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_source_refs))}</dd></div>
-            <div class="kv-item"><dt>linked_gate_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_gate_checked_at))}</dd></div>
-            <div class="kv-item"><dt>gate_gap</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.gate_decision_gap_minutes))}</dd></div>
-            <div class="kv-item"><dt>linked_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.linked_price_gate))}</dd></div>
-            <div class="kv-item"><dt>fail_reasons</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_fail_reason_codes))}</dd></div>
-            <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_code))}</dd></div>
-            <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_detail))}</dd></div>
-            <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
-            <div class="kv-item"><dt>linked_gate_note</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_gate_note))}</dd></div>
-            <div class="kv-item"><dt>market_note</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_market_note))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("decision_at"))}</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.decision_reference_at))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("linked_snapshot_at"))}</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_snapshot_at))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("snapshot_gap"))}</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.snapshot_decision_gap_minutes))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("trigger_state"))}</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.linked_trigger_state))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("observed_signals"))}</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_observed_signals))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("event_risk_today"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_event_risk_today))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("operator_action"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_operator_action))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("source_refs"))}</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_source_refs))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("linked_gate_at"))}</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_gate_checked_at))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("gate_gap"))}</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.gate_decision_gap_minutes))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("linked_price_gate"))}</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.linked_price_gate))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("fail_reasons"))}</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_fail_reason_codes))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("latest_reason_code"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_code))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("latest_reason_detail"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_detail))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("next_review_phase"))}</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("linked_gate_note"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_gate_note))}</dd></div>
+            <div class="kv-item"><dt>${escapeHtml(formatFieldLabel("market_note"))}</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_market_note))}</dd></div>
           </div>
         </section>
     
         <section class="detail-grid">
           <section class="panel detail-panel muted">
-            <h2 class="section-title">Observation Timeline</h2>
-            <p class="section-copy">Latest snapshots first so the present thesis state is visible at a glance.</p>
+            <h2 class="section-title">観測タイムライン</h2>
+            <p class="section-copy">最新の観測を先頭に並べ、現在の仮説状態を一瞥で追えるようにします。</p>
             ${renderObservationTimeline(detail.snapshots)}
           </section>
     
           <section class="panel detail-panel muted">
-            <h2 class="section-title">Price Gate</h2>
-            <p class="section-copy">The latest gate stays isolated from the thesis so rejected and invalidated cases do not blur together.</p>
+            <h2 class="section-title">価格条件</h2>
+            <p class="section-copy">最新の価格判定を仮説本体と分けて表示し、見送りと失効の意味が混ざらないようにします。</p>
             ${renderPriceGate(latestPriceGate)}
           </section>
         </section>
     
         <section class="panel detail-panel">
-          <h2 class="section-title">Status History</h2>
-          <p class="section-copy">Reason codes stay explicit so price gate failures never look like thesis breakage.</p>
+          <h2 class="section-title">状態履歴</h2>
+          <p class="section-copy">理由コードを明示し、価格条件不通過と仮説失効が混ざらないようにします。</p>
           ${renderStatusHistory(detail.statusEvents)}
         </section>
       `;
@@ -2161,30 +2360,13 @@
     };
   },
   "src/render/scenarioForm.js": function(requireModule) {
-    const { escapeHtml, formatPhase } = requireModule("src/lib/formatters.js");
+    const { escapeHtml, formatCodeLabel, formatFieldLabel, formatPhase } = requireModule("src/lib/formatters.js");
     const { scenarioFormOptions } = requireModule("src/lib/scenarioDraft.js");
-    const optionLabels = {
-      nikkei225: "Nikkei 225",
-      downside: "Downside",
-      upside: "Upside",
-      "1d_2w": "1d to 2w",
-      same_day: "Same Day",
-      same_week: "Same Week",
-      next_3_sessions: "Next 3 Sessions",
-      next_5_sessions: "Next 5 Sessions",
-      standard_min_gate: "Standard Min Gate",
-      event_guarded_gate: "Event Guarded Gate"
-    };
-    
-    function formatOptionLabel(value) {
-      return optionLabels[value] ?? value;
-    }
-    
     function renderSelectOptions(options, selectedValue) {
       return options
         .map((value) => {
           const isSelected = value === selectedValue ? ' selected="selected"' : "";
-          return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(formatOptionLabel(value))}</option>`;
+          return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(formatCodeLabel(value))}</option>`;
         })
         .join("");
     }
@@ -2210,7 +2392,7 @@
     
       return `
         <div class="form-errors" role="alert">
-          <p class="form-errors-title">Fix the following before saving.</p>
+          <p class="form-errors-title">保存前に次を修正してください。</p>
           <ul class="form-error-list">
             ${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}
           </ul>
@@ -2220,11 +2402,11 @@
     
     function renderScenarioForm({ draft, errors, mode, cancelHref }) {
       const isEditMode = mode === "edit";
-      const formTitle = isEditMode ? "Edit Scenario" : "New Scenario";
+      const formTitle = isEditMode ? "シナリオ編集" : "新規シナリオ";
       const formCopy = isEditMode
-        ? "Only stable thesis fields change here. Review records stay append-only."
-        : "Create a stable thesis record first. Current status will stay on Watch until review records are added later.";
-      const submitLabel = isEditMode ? "Save Scenario" : "Create Scenario";
+        ? "ここで更新するのは固定的な仮説項目のみです。レビュー履歴は追記専用のまま残ります。"
+        : "まずは固定的な仮説を登録します。レビュー記録が追加されるまでは状態は「監視」のままです。";
+      const submitLabel = isEditMode ? "シナリオを保存" : "シナリオを作成";
       const readOnlyAttributes = isEditMode ? ' readonly="readonly" aria-readonly="true"' : "";
       const tagsValue = escapeHtml(draft.tags.join(", "));
     
@@ -2236,95 +2418,95 @@
               <p class="section-copy">${formCopy}</p>
             </div>
             <div class="detail-actions">
-              <a class="action ghost" href="${cancelHref}">Cancel</a>
+              <a class="action ghost" href="${cancelHref}">キャンセル</a>
             </div>
           </div>
           ${renderErrors(errors)}
           <form class="scenario-form" data-scenario-form novalidate>
             <div class="form-grid">
               <label class="field">
-                <span>scenario_id</span>
+                <span>${formatFieldLabel("scenario_id")}</span>
                 <input type="text" name="scenario_id" value="${escapeHtml(draft.scenario_id)}"${readOnlyAttributes} placeholder="NKY-D-005" />
-                <small class="field-hint">${isEditMode ? "Scenario ID is fixed during edit." : "Duplicate IDs update the existing scenario."}</small>
+                <small class="field-hint">${isEditMode ? "編集中はシナリオIDを変更できません。" : "同じシナリオIDで保存すると既存シナリオを更新します。"}</small>
               </label>
     
               <label class="field">
-                <span>market</span>
+                <span>${formatFieldLabel("market")}</span>
                 <select name="market">
                   ${renderSelectOptions(scenarioFormOptions.markets, draft.market)}
                 </select>
               </label>
     
               <label class="field">
-                <span>direction</span>
+                <span>${formatFieldLabel("direction")}</span>
                 <select name="direction">
                   ${renderSelectOptions(scenarioFormOptions.directions, draft.direction)}
                 </select>
               </label>
     
               <label class="field">
-                <span>horizon_bucket</span>
+                <span>${formatFieldLabel("horizon_bucket")}</span>
                 <select name="horizon_bucket">
                   ${renderSelectOptions(scenarioFormOptions.horizonBuckets, draft.horizon_bucket)}
                 </select>
               </label>
     
               <label class="field">
-                <span>entry_window</span>
+                <span>${formatFieldLabel("entry_window")}</span>
                 <select name="entry_window">
                   ${renderSelectOptions(scenarioFormOptions.entryWindows, draft.entry_window)}
                 </select>
               </label>
     
               <label class="field">
-                <span>price_gate_policy</span>
+                <span>${formatFieldLabel("price_gate_policy")}</span>
                 <select name="price_gate_policy">
                   ${renderSelectOptions(scenarioFormOptions.priceGatePolicies, draft.price_gate_policy)}
                 </select>
               </label>
     
               <label class="field field-wide">
-                <span>scenario_summary</span>
+                <span>${formatFieldLabel("scenario_summary")}</span>
                 <textarea name="scenario_summary" rows="2" placeholder="us_rates_reprice_and_yen_strength_pressure_nikkei">${escapeHtml(draft.scenario_summary)}</textarea>
               </label>
     
               <label class="field field-wide">
-                <span>observation_trigger</span>
+                <span>${formatFieldLabel("observation_trigger")}</span>
                 <textarea name="observation_trigger" rows="3" placeholder="usd_jpy_breaks_prior_day_low_and_nky_futures_fail_rebound">${escapeHtml(draft.observation_trigger)}</textarea>
               </label>
     
               <label class="field field-wide">
-                <span>flow_chain</span>
+                <span>${formatFieldLabel("flow_chain")}</span>
                 <textarea name="flow_chain" rows="3" placeholder="us_rates_up -> yen_strength -> exporters_weaken -> index_pressure">${escapeHtml(draft.flow_chain)}</textarea>
               </label>
     
               <label class="field field-wide">
-                <span>invalidation_rule</span>
+                <span>${formatFieldLabel("invalidation_rule")}</span>
                 <textarea name="invalidation_rule" rows="3" placeholder="usd_jpy_reclaims_range_or_nky_closes_above_gap">${escapeHtml(draft.invalidation_rule)}</textarea>
               </label>
     
               <fieldset class="field field-wide">
-                <legend>review_cadence</legend>
+                <legend>${formatFieldLabel("review_cadence")}</legend>
                 <div class="checkbox-grid">
                   ${renderCadenceOptions(draft.review_cadence)}
                 </div>
               </fieldset>
     
               <label class="field field-wide">
-                <span>tags</span>
+                <span>${formatFieldLabel("tags")}</span>
                 <input type="text" name="tags" value="${tagsValue}" placeholder="rates, yen, exporters" />
-                <small class="field-hint">Comma or semicolon separated.</small>
+                <small class="field-hint">カンマまたはセミコロン区切りで入力します。</small>
               </label>
     
               <label class="field field-wide">
-                <span>notes</span>
-                <textarea name="notes" rows="3" placeholder="optional operator note">${escapeHtml(draft.notes)}</textarea>
+                <span>${formatFieldLabel("notes")}</span>
+                <textarea name="notes" rows="3" placeholder="optional_operator_note">${escapeHtml(draft.notes)}</textarea>
               </label>
             </div>
     
             <div class="form-actions">
               <button class="action primary" type="submit">${submitLabel}</button>
-              <a class="action ghost" href="${cancelHref}">Cancel</a>
+              <a class="action ghost" href="${cancelHref}">キャンセル</a>
             </div>
           </form>
         </section>

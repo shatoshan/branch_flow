@@ -1,3 +1,5 @@
+import { formatCodeLabel, formatFieldLabel } from "./formatters.js";
+
 export const scenarioFormOptions = {
   markets: ["nikkei225"],
   directions: ["downside", "upside"],
@@ -79,14 +81,18 @@ function buildDraft(rawInput) {
 function pushRequiredFieldErrors(draft, errors) {
   for (const field of requiredTextFields) {
     if (!draft[field]) {
-      errors.push(`${field} is required`);
+      errors.push(`${formatFieldLabel(field)}は必須です`);
     }
   }
 }
 
 function pushEnumError(field, value, allowedValues, errors) {
   if (!allowedValues.includes(value)) {
-    errors.push(`${field} must be one of: ${allowedValues.join(", ")}`);
+    errors.push(
+      `${formatFieldLabel(field)}は次のいずれかを選択してください: ${allowedValues
+        .map((allowedValue) => formatCodeLabel(allowedValue))
+        .join(" / ")}`
+    );
   }
 }
 
@@ -142,7 +148,7 @@ export function normalizeScenarioDraftInput(rawInput) {
   pushEnumError("price_gate_policy", draft.price_gate_policy, scenarioFormOptions.priceGatePolicies, errors);
 
   if (draft.review_cadence.length === 0) {
-    errors.push("review_cadence requires at least one selection");
+    errors.push(`${formatFieldLabel("review_cadence")}を少なくとも1つ選択してください`);
   }
 
   return {

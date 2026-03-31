@@ -1,5 +1,7 @@
 import {
   escapeHtml,
+  formatCodeLabel,
+  formatFieldLabel,
   formatGateStatus,
   formatPhase,
   formatStatus,
@@ -14,7 +16,7 @@ function renderErrors(errors) {
 
   return `
     <div class="form-errors" role="alert">
-      <p class="form-errors-title">Fix the following before saving.</p>
+      <p class="form-errors-title">保存前に次を修正してください。</p>
       <ul class="form-error-list">
         ${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}
       </ul>
@@ -53,9 +55,9 @@ function renderSelectOptions(group, selectedValue) {
 
 function renderTriStateOptions(selectedValue) {
   const options = [
-    { value: "", label: "Unset" },
-    { value: "true", label: "Yes" },
-    { value: "false", label: "No" }
+    { value: "", label: "未設定" },
+    { value: "true", label: "OK" },
+    { value: "false", label: "NG" }
   ];
 
   return options
@@ -73,7 +75,7 @@ function renderFailReasonOptions(selectedValues) {
       return `
         <label class="checkbox-option">
           <input type="checkbox" name="fail_reason_codes" value="${escapeHtml(value)}"${isChecked} />
-          <span>${escapeHtml(value)}</span>
+          <span>${escapeHtml(formatCodeLabel(value))}</span>
         </label>
       `;
     })
@@ -88,179 +90,179 @@ export function renderDailyReviewForm({ draft, errors, cancelHref }) {
     <section class="panel detail-panel form-panel">
       <div class="form-shell">
         <div>
-          <h2 class="section-title">Add Daily Review</h2>
-          <p class="section-copy">Append one observation snapshot, one price gate, and one status event in the same submit. Review IDs are assigned automatically.</p>
+          <h2 class="section-title">日次レビュー追加</h2>
+          <p class="section-copy">1回の送信で観測、価格条件、状態変更をまとめて追記します。レビューIDは自動採番されます。</p>
         </div>
         <div class="detail-actions">
-          <a class="action ghost" href="${cancelHref}">Cancel</a>
+          <a class="action ghost" href="${cancelHref}">キャンセル</a>
         </div>
       </div>
       ${renderErrors(errors)}
       <form class="scenario-form" data-review-form novalidate>
         <div class="form-grid">
           <label class="field">
-            <span>scenario_id</span>
+            <span>${formatFieldLabel("scenario_id")}</span>
             <input type="text" name="scenario_id" value="${escapeHtml(draft.scenario_id)}" readonly="readonly" aria-readonly="true" />
           </label>
 
           <label class="field">
-            <span>from_status</span>
+            <span>${formatFieldLabel("from_status")}</span>
             <input type="text" name="from_status" value="${escapeHtml(formatStatus(draft.from_status))}" readonly="readonly" aria-readonly="true" />
-            <small class="field-hint">Derived from the latest status event or seed status.</small>
+            <small class="field-hint">最新状態、または初期状態から自動計算されます。</small>
           </label>
 
           <label class="field">
-            <span>observed_at</span>
+            <span>${formatFieldLabel("observed_at")}</span>
             <input type="text" name="observed_at" value="${escapeHtml(draft.observed_at)}" placeholder="2026-03-25T08:55:00+09:00" />
           </label>
 
           <label class="field">
-            <span>session_phase</span>
+            <span>${formatFieldLabel("session_phase")}</span>
             <select name="session_phase">
               ${renderSelectOptions("sessionPhases", draft.session_phase)}
             </select>
           </label>
 
           <label class="field">
-            <span>trigger_state</span>
+            <span>${formatFieldLabel("trigger_state")}</span>
             <select name="trigger_state">
               ${renderSelectOptions("triggerStates", draft.trigger_state)}
             </select>
           </label>
 
           <label class="field">
-            <span>checked_at</span>
+            <span>${formatFieldLabel("checked_at")}</span>
             <input type="text" name="checked_at" value="${escapeHtml(draft.checked_at)}" placeholder="2026-03-25T08:58:00+09:00" />
           </label>
 
           <label class="field">
-            <span>overall_gate</span>
+            <span>${formatFieldLabel("overall_gate")}</span>
             <select name="overall_gate">
               ${renderSelectOptions("gateStatuses", draft.overall_gate)}
             </select>
-            <small class="field-hint">Use unchecked to append a review without a confirmed option check yet.</small>
+            <small class="field-hint">価格未確認のレビューを残す場合は「未確認」を選びます。</small>
           </label>
 
           <label class="field">
-            <span>changed_at</span>
+            <span>${formatFieldLabel("changed_at")}</span>
             <input type="text" name="changed_at" value="${escapeHtml(draft.changed_at)}" placeholder="2026-03-25T09:00:00+09:00" />
           </label>
 
           <label class="field">
-            <span>to_status</span>
+            <span>${formatFieldLabel("to_status")}</span>
             <select name="to_status">
               ${renderSelectOptions("statusOptions", draft.to_status)}
             </select>
           </label>
 
           <label class="field">
-            <span>reason_code</span>
+            <span>${formatFieldLabel("reason_code")}</span>
             <select name="reason_code">
               ${dailyReviewFormOptions.reasonCodes
                 .map((value) => {
                   const isSelected = value === draft.reason_code ? ' selected="selected"' : "";
-                  return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(value)}</option>`;
+                  return `<option value="${escapeHtml(value)}"${isSelected}>${escapeHtml(formatCodeLabel(value))}</option>`;
                 })
                 .join("")}
             </select>
           </label>
 
           <label class="field">
-            <span>next_review_phase</span>
+            <span>${formatFieldLabel("next_review_phase")}</span>
             <select name="next_review_phase">
               ${renderSelectOptions("sessionPhases", draft.next_review_phase)}
             </select>
           </label>
 
           <label class="field">
-            <span>next_review_at</span>
+            <span>${formatFieldLabel("next_review_at")}</span>
             <input type="text" name="next_review_at" value="${escapeHtml(draft.next_review_at)}" placeholder="2026-03-25T15:10:00+09:00" />
           </label>
 
           <label class="field field-wide">
-            <span>observed_signals</span>
+            <span>${formatFieldLabel("observed_signals")}</span>
             <input type="text" name="observed_signals" value="${observedSignals}" placeholder="usd_jpy_break, breadth_soft, exporters_weak" />
-            <small class="field-hint">Comma or semicolon separated.</small>
+            <small class="field-hint">カンマまたはセミコロン区切りで入力します。</small>
           </label>
 
           <label class="field">
-            <span>event_risk_today</span>
+            <span>${formatFieldLabel("event_risk_today")}</span>
             <input type="text" name="event_risk_today" value="${escapeHtml(draft.event_risk_today)}" placeholder="none_major" />
           </label>
 
           <label class="field">
-            <span>operator_action</span>
+            <span>${formatFieldLabel("operator_action")}</span>
             <input type="text" name="operator_action" value="${escapeHtml(draft.operator_action)}" placeholder="keep_watch" />
           </label>
 
           <label class="field field-wide">
-            <span>source_refs</span>
+            <span>${formatFieldLabel("source_refs")}</span>
             <input type="text" name="source_refs" value="${sourceRefs}" placeholder="fx_board, breadth_sheet" />
-            <small class="field-hint">Comma or semicolon separated.</small>
+            <small class="field-hint">カンマまたはセミコロン区切りで入力します。</small>
           </label>
 
           <label class="field field-wide">
-            <span>market_note</span>
-            <textarea name="market_note" rows="3" placeholder="market context observed during the review">${escapeHtml(draft.market_note)}</textarea>
+            <span>${formatFieldLabel("market_note")}</span>
+            <textarea name="market_note" rows="3" placeholder="review_market_context_note">${escapeHtml(draft.market_note)}</textarea>
           </label>
 
           <label class="field">
-            <span>expiry_bucket_ok</span>
+            <span>${formatFieldLabel("expiry_bucket_ok")}</span>
             <select name="expiry_bucket_ok">
               ${renderTriStateOptions(draft.expiry_bucket_ok)}
             </select>
           </label>
 
           <label class="field">
-            <span>spread_ok</span>
+            <span>${formatFieldLabel("spread_ok")}</span>
             <select name="spread_ok">
               ${renderTriStateOptions(draft.spread_ok)}
             </select>
           </label>
 
           <label class="field">
-            <span>premium_within_budget</span>
+            <span>${formatFieldLabel("premium_within_budget")}</span>
             <select name="premium_within_budget">
               ${renderTriStateOptions(draft.premium_within_budget)}
             </select>
           </label>
 
           <label class="field">
-            <span>iv_event_heat_ok</span>
+            <span>${formatFieldLabel("iv_event_heat_ok")}</span>
             <select name="iv_event_heat_ok">
               ${renderTriStateOptions(draft.iv_event_heat_ok)}
             </select>
           </label>
 
           <label class="field">
-            <span>theme_cooldown_ok</span>
+            <span>${formatFieldLabel("theme_cooldown_ok")}</span>
             <select name="theme_cooldown_ok">
               ${renderTriStateOptions(draft.theme_cooldown_ok)}
             </select>
           </label>
 
           <fieldset class="field field-wide">
-            <legend>fail_reason_codes</legend>
+            <legend>${formatFieldLabel("fail_reason_codes")}</legend>
             <div class="checkbox-grid">
               ${renderFailReasonOptions(draft.fail_reason_codes)}
             </div>
-            <small class="field-hint">Leave empty when overall_gate is pass or unchecked.</small>
+            <small class="field-hint">総合判定が「通過」または「未確認」のときは空で構いません。</small>
           </fieldset>
 
           <label class="field field-wide">
-            <span>gate_note</span>
-            <textarea name="gate_note" rows="3" placeholder="why the option check passed, failed, or stayed unchecked">${escapeHtml(draft.gate_note)}</textarea>
+            <span>${formatFieldLabel("gate_note")}</span>
+            <textarea name="gate_note" rows="3" placeholder="gate_check_note">${escapeHtml(draft.gate_note)}</textarea>
           </label>
 
           <label class="field field-wide">
-            <span>reason_detail</span>
-            <textarea name="reason_detail" rows="3" placeholder="optional detail attached to the status event">${escapeHtml(draft.reason_detail)}</textarea>
+            <span>${formatFieldLabel("reason_detail")}</span>
+            <textarea name="reason_detail" rows="3" placeholder="optional_reason_detail">${escapeHtml(draft.reason_detail)}</textarea>
           </label>
         </div>
 
         <div class="form-actions">
-          <button class="action primary" type="submit">Append Daily Review</button>
-          <a class="action ghost" href="${cancelHref}">Cancel</a>
+          <button class="action primary" type="submit">日次レビューを追記</button>
+          <a class="action ghost" href="${cancelHref}">キャンセル</a>
         </div>
       </form>
     </section>
