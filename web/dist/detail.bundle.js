@@ -836,6 +836,13 @@
       unchecked: "Unchecked"
     };
     
+    const tokyoDayFormatter = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "Asia/Tokyo"
+    });
+    
     function escapeHtml(value) {
       return String(value ?? "")
         .replaceAll("&", "&amp;")
@@ -889,6 +896,22 @@
       return values.join(" ; ");
     }
     
+    function formatCodeLabel(value) {
+      if (!value) {
+        return "none";
+      }
+    
+      return String(value).replaceAll("_", " ");
+    }
+    
+    function formatCodeList(values) {
+      if (!values || values.length === 0) {
+        return "none";
+      }
+    
+      return values.map((value) => formatCodeLabel(value)).join(" ; ");
+    }
+    
     function buildPriceGateSummary(gate, fallbackPolicy) {
       if (!gate) {
         return `policy: ${fallbackPolicy}`;
@@ -912,6 +935,111 @@
       }
     
       return new Date(nextReviewAt).getTime() <= new Date(now).getTime();
+    }
+    
+    function diffMinutes(later, earlier) {
+      if (!later || !earlier) {
+        return null;
+      }
+    
+      return Math.max(0, Math.round((new Date(later).getTime() - new Date(earlier).getTime()) / 60000));
+    }
+    
+    function formatMinuteGap(value) {
+      if (value === null || typeof value === "undefined") {
+        return "n/a";
+      }
+    
+      const hours = Math.floor(value / 60);
+      const minutes = value % 60;
+    
+      if (hours === 0) {
+        return `${minutes}m`;
+      }
+    
+      if (minutes === 0) {
+        return `${hours}h`;
+      }
+    
+      return `${hours}h ${minutes}m`;
+    }
+    
+    function isSameTokyoDay(first, second) {
+      if (!first || !second) {
+        return false;
+      }
+    
+      return tokyoDayFormatter.format(new Date(first)) === tokyoDayFormatter.format(new Date(second));
+    }
+    
+    function buildPriceFreshnessSummary(view) {
+      if (!view.linked_price_gate_id || view.linked_price_gate === null) {
+        return "Price not checked in the linked review.";
+      }
+    
+      if (view.linked_price_gate === "unchecked") {
+        return "Price still unchecked in the linked review.";
+      }
+    
+      const gapText = formatMinuteGap(view.gate_decision_gap_minutes);
+    
+      if (view.price_freshness_state === "fresh") {
+        return `Price fresh: checked ${gapText} before the latest decision.`;
+      }
+    
+      if (view.price_freshness_state === "aging") {
+        return `Price aging: checked ${gapText} before the latest decision.`;
+      }
+    
+      return `Price stale: checked ${gapText} before the latest decision.`;
+    }
+    
+    function buildDecisionSummary(view) {
+      const reasonCode = formatCodeLabel(view.latest_reason_code);
+      const reasonDetail = view.latest_reason_detail ? formatCodeLabel(view.latest_reason_detail) : "";
+      const failReasons = formatCodeList(view.linked_fail_reason_codes);
+    
+      let label = "Why not now";
+      let line = "";
+    
+      if (view.current_status === "eligible") {
+        label = "Why now";
+        line =
+          view.linked_trigger_state === "confirmed" && view.linked_price_gate === "pass"
+            ? "Trigger confirmed and price gate passed."
+            : `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+      } else if (view.current_status === "rejected") {
+        line =
+          view.linked_price_gate === "fail"
+            ? failReasons !== "none"
+              ? `Price gate failed on ${failReasons}.`
+              : "Price gate failed."
+            : `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+      } else if (view.current_status === "invalidated") {
+        label = "Kill switch";
+        line = reasonDetail || reasonCode;
+        if (!line.endsWith(".")) {
+          line = `${line}.`;
+        }
+      } else if (view.linked_trigger_state === "confirmed" && (!view.linked_price_gate_id || view.linked_price_gate === "unchecked")) {
+        line = "Trigger confirmed, but price has not been checked yet.";
+      } else if (view.linked_trigger_state === "partial") {
+        line = "Trigger is still partial.";
+      } else if (view.linked_trigger_state === "invalidated") {
+        line = "Latest linked observation already touched the kill switch.";
+      } else if (view.linked_snapshot_id) {
+        line = `${reasonCode}${reasonDetail ? `: ${reasonDetail}` : "."}`;
+      } else {
+        line = "No linked review yet.";
+      }
+    
+      const compact = `${label}: ${line}`;
+    
+      return {
+        label,
+        line,
+        compact
+      };
     }
     
     function compareAscWithNulls(first, second) {
@@ -943,8 +1071,15 @@
       "formatGateStatus": formatGateStatus,
       "formatBooleanCheck": formatBooleanCheck,
       "formatList": formatList,
+      "formatCodeLabel": formatCodeLabel,
+      "formatCodeList": formatCodeList,
       "buildPriceGateSummary": buildPriceGateSummary,
       "isDue": isDue,
+      "diffMinutes": diffMinutes,
+      "formatMinuteGap": formatMinuteGap,
+      "isSameTokyoDay": isSameTokyoDay,
+      "buildPriceFreshnessSummary": buildPriceFreshnessSummary,
+      "buildDecisionSummary": buildDecisionSummary,
       "compareAscWithNulls": compareAscWithNulls,
       "compareDesc": compareDesc
     };
@@ -1150,7 +1285,10 @@
     };
   },
   "src/lib/scenarioViews.js": function(requireModule) {
-    const { buildPriceGateSummary, compareAscWithNulls, compareDesc, isDue } = requireModule("src/lib/formatters.js");
+    const { buildPriceGateSummary, compareAscWithNulls, compareDesc, diffMinutes, isDue } = requireModule("src/lib/formatters.js");
+    const freshGateMaxMinutes = 15;
+    const agingGateMaxMinutes = 90;
+    
     function byScenario(records, scenarioId, field) {
       return records[field].filter((entry) => entry.scenario_id === scenarioId);
     }
@@ -1159,14 +1297,63 @@
       return [...entries].sort((left, right) => compareDesc(left[timestampField], right[timestampField]))[0] ?? null;
     }
     
+    function indexBy(entries, idField) {
+      return Object.fromEntries(entries.map((entry) => [entry[idField], entry]));
+    }
+    
+    function selectLinkedEntry(event, idField, index, fallbackEntry) {
+      if (!event) {
+        return fallbackEntry;
+      }
+    
+      const linkedId = event[idField];
+      if (!linkedId) {
+        return null;
+      }
+    
+      return index[linkedId] ?? null;
+    }
+    
+    function derivePriceFreshnessState(gapMinutes, gate) {
+      if (!gate) {
+        return "missing";
+      }
+    
+      if (gate.overall_gate === "unchecked") {
+        return "unchecked";
+      }
+    
+      if (gapMinutes === null) {
+        return "unknown";
+      }
+    
+      if (gapMinutes <= freshGateMaxMinutes) {
+        return "fresh";
+      }
+    
+      if (gapMinutes <= agingGateMaxMinutes) {
+        return "aging";
+      }
+    
+      return "stale";
+    }
+    
     function buildScenarioCurrentView(records, scenario, now = records.prototypeClock) {
       const snapshots = byScenario(records, scenario.scenario_id, "observationSnapshots");
       const gates = byScenario(records, scenario.scenario_id, "priceGates");
       const events = byScenario(records, scenario.scenario_id, "statusEvents");
+      const snapshotsById = indexBy(snapshots, "snapshot_id");
+      const gatesById = indexBy(gates, "price_gate_id");
     
       const latestSnapshot = selectLatest(snapshots, "observed_at");
       const latestGate = selectLatest(gates, "checked_at");
       const latestEvent = selectLatest(events, "changed_at");
+      const linkedSnapshot = selectLinkedEntry(latestEvent, "snapshot_id", snapshotsById, latestSnapshot);
+      const linkedGate = selectLinkedEntry(latestEvent, "price_gate_id", gatesById, latestGate);
+      const decisionReferenceAt = latestEvent?.changed_at ?? latestSnapshot?.observed_at ?? now;
+      const snapshotDecisionGapMinutes = diffMinutes(decisionReferenceAt, linkedSnapshot?.observed_at ?? null);
+      const gateDecisionGapMinutes = diffMinutes(decisionReferenceAt, linkedGate?.checked_at ?? null);
+      const priceFreshnessState = derivePriceFreshnessState(gateDecisionGapMinutes, linkedGate);
     
       return {
         scenario_id: scenario.scenario_id,
@@ -1189,6 +1376,24 @@
         latest_price_gate: latestGate?.overall_gate ?? null,
         latest_fail_reason_codes: latestGate?.fail_reason_codes ?? [],
         latest_gate_checked_at: latestGate?.checked_at ?? null,
+        decision_reference_at: decisionReferenceAt,
+        linked_snapshot_id: linkedSnapshot?.snapshot_id ?? null,
+        linked_snapshot_at: linkedSnapshot?.observed_at ?? null,
+        linked_session_phase: linkedSnapshot?.session_phase ?? null,
+        linked_trigger_state: linkedSnapshot?.trigger_state ?? null,
+        linked_observed_signals: linkedSnapshot?.observed_signals ?? [],
+        linked_event_risk_today: linkedSnapshot?.event_risk_today ?? null,
+        linked_market_note: linkedSnapshot?.market_note ?? "",
+        linked_operator_action: linkedSnapshot?.operator_action ?? null,
+        linked_source_refs: linkedSnapshot?.source_refs ?? [],
+        linked_price_gate_id: linkedGate?.price_gate_id ?? null,
+        linked_price_gate: linkedGate?.overall_gate ?? null,
+        linked_fail_reason_codes: linkedGate?.fail_reason_codes ?? [],
+        linked_gate_checked_at: linkedGate?.checked_at ?? null,
+        linked_gate_note: linkedGate?.gate_note ?? "",
+        snapshot_decision_gap_minutes: snapshotDecisionGapMinutes,
+        gate_decision_gap_minutes: gateDecisionGapMinutes,
+        price_freshness_state: priceFreshnessState,
         next_review_phase: latestEvent?.next_review_phase ?? null,
         next_review_at: latestEvent?.next_review_at ?? null,
         is_review_due: isDue(latestEvent?.next_review_at, now)
@@ -1659,7 +1864,7 @@
     };
   },
   "src/render/detailPage.js": function(requireModule) {
-    const { escapeHtml, formatBooleanCheck, formatGateStatus, formatList, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
+    const { buildDecisionSummary, buildPriceFreshnessSummary, escapeHtml, formatBooleanCheck, formatCodeLabel, formatCodeList, formatGateStatus, formatList, formatMinuteGap, formatPhase, formatStatus, formatTimestamp, formatTriggerState } = requireModule("src/lib/formatters.js");
     const { renderDailyReviewForm } = requireModule("src/render/dailyReviewForm.js");
     const { renderScenarioForm } = requireModule("src/render/scenarioForm.js");
     function renderSignals(signals) {
@@ -1684,8 +1889,8 @@
           <div class="kv-grid">
             <div class="kv-item"><dt>checked_at</dt><dd>${escapeHtml(formatTimestamp(priceGate.checked_at))}</dd></div>
             <div class="kv-item"><dt>overall_gate</dt><dd>${escapeHtml(formatGateStatus(priceGate.overall_gate))}</dd></div>
-            <div class="kv-item"><dt>fail_reason_codes</dt><dd>${escapeHtml(formatList(priceGate.fail_reason_codes))}</dd></div>
-            <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(priceGate.gate_note)}</dd></div>
+            <div class="kv-item"><dt>fail_reason_codes</dt><dd>${escapeHtml(formatCodeList(priceGate.fail_reason_codes))}</dd></div>
+            <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(formatCodeLabel(priceGate.gate_note))}</dd></div>
           </div>
           <div class="kv-grid">
             <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.expiry_bucket_ok))}</dd></div>
@@ -1712,7 +1917,12 @@
                       <span>${escapeHtml(formatTriggerState(snapshot.trigger_state))}</span>
                     </div>
                     <div class="pill-row">${renderSignals(snapshot.observed_signals)}</div>
-                    <p class="timeline-note">${escapeHtml(snapshot.market_note)}</p>
+                    <div class="timeline-facts">
+                      <div class="kv-item"><dt>event_risk</dt><dd>${escapeHtml(formatCodeLabel(snapshot.event_risk_today))}</dd></div>
+                      <div class="kv-item"><dt>operator_action</dt><dd>${escapeHtml(formatCodeLabel(snapshot.operator_action))}</dd></div>
+                      <div class="kv-item"><dt>source_refs</dt><dd>${escapeHtml(formatCodeList(snapshot.source_refs))}</dd></div>
+                    </div>
+                    <p class="timeline-note">${escapeHtml(formatCodeLabel(snapshot.market_note))}</p>
                   </li>
                 `
               )
@@ -1734,7 +1944,7 @@
                       <span>${escapeHtml(formatTimestamp(event.changed_at))}</span>
                       <span>${escapeHtml(formatStatus(event.from_status))} -> ${escapeHtml(formatStatus(event.to_status))}</span>
                     </div>
-                    <p class="history-note">${escapeHtml(event.reason_code)} / ${escapeHtml(event.reason_detail || "none")}</p>
+                    <p class="history-note">${escapeHtml(formatCodeLabel(event.reason_code))} / ${escapeHtml(formatCodeLabel(event.reason_detail))}</p>
                   </li>
                 `
               )
@@ -1841,6 +2051,7 @@
     
     function renderScenarioSections(detail) {
       const latestPriceGate = detail.priceGates[0] ?? null;
+      const decision = buildDecisionSummary(detail.currentView);
     
       return `
         <section class="panel detail-panel">
@@ -1862,14 +2073,31 @@
     
         <section class="panel detail-panel">
           <h2 class="section-title">Current View</h2>
-          <p class="section-copy">Derived fields come from the latest status event, observation snapshot, and price gate.</p>
+          <p class="section-copy">Latest decision context comes from the newest status event and the observation / gate records linked from it.</p>
+          <div class="decision-block detail-decision-block">
+            <p class="decision-kicker">${escapeHtml(decision.label)}</p>
+            <p class="decision-line">${escapeHtml(decision.line)}</p>
+            <p class="support-line">${escapeHtml(buildPriceFreshnessSummary(detail.currentView))}</p>
+            <p class="support-line">Kill switch: ${escapeHtml(formatCodeLabel(detail.scenario.invalidation_rule))}</p>
+          </div>
           <div class="current-grid">
-            <div class="kv-item"><dt>latest_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.latest_snapshot_at))}</dd></div>
-            <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.latest_trigger_state))}</dd></div>
-            <div class="kv-item"><dt>latest_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.latest_price_gate))}</dd></div>
-            <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(detail.currentView.latest_reason_code)}</dd></div>
-            <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(detail.currentView.latest_reason_detail || "none")}</dd></div>
+            <div class="kv-item"><dt>decision_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.decision_reference_at))}</dd></div>
+            <div class="kv-item"><dt>linked_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_snapshot_at))}</dd></div>
+            <div class="kv-item"><dt>snapshot_gap</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.snapshot_decision_gap_minutes))}</dd></div>
+            <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.linked_trigger_state))}</dd></div>
+            <div class="kv-item"><dt>observed_signals</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_observed_signals))}</dd></div>
+            <div class="kv-item"><dt>event_risk_today</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_event_risk_today))}</dd></div>
+            <div class="kv-item"><dt>operator_action</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_operator_action))}</dd></div>
+            <div class="kv-item"><dt>source_refs</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_source_refs))}</dd></div>
+            <div class="kv-item"><dt>linked_gate_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_gate_checked_at))}</dd></div>
+            <div class="kv-item"><dt>gate_gap</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.gate_decision_gap_minutes))}</dd></div>
+            <div class="kv-item"><dt>linked_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.linked_price_gate))}</dd></div>
+            <div class="kv-item"><dt>fail_reasons</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_fail_reason_codes))}</dd></div>
+            <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_code))}</dd></div>
+            <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_detail))}</dd></div>
             <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
+            <div class="kv-item"><dt>linked_gate_note</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_gate_note))}</dd></div>
+            <div class="kv-item"><dt>market_note</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_market_note))}</dd></div>
           </div>
         </section>
     

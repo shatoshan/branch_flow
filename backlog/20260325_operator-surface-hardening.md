@@ -1,6 +1,6 @@
 # 20260325 Operator Surface Hardening
 
-Status: todo
+Status: done
 Prerequisite: backlog/20260325_daily-review-append-path.md
 Worklog: worklog/20260325_operator-surface-hardening.md
 Result: web/, scripts/check.mjs

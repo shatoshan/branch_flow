@@ -2,8 +2,12 @@ import {
   buildPriceGateSummary,
   compareAscWithNulls,
   compareDesc,
+  diffMinutes,
   isDue
 } from "./formatters.js";
+
+const freshGateMaxMinutes = 15;
+const agingGateMaxMinutes = 90;
 
 function byScenario(records, scenarioId, field) {
   return records[field].filter((entry) => entry.scenario_id === scenarioId);
@@ -13,14 +17,63 @@ function selectLatest(entries, timestampField) {
   return [...entries].sort((left, right) => compareDesc(left[timestampField], right[timestampField]))[0] ?? null;
 }
 
+function indexBy(entries, idField) {
+  return Object.fromEntries(entries.map((entry) => [entry[idField], entry]));
+}
+
+function selectLinkedEntry(event, idField, index, fallbackEntry) {
+  if (!event) {
+    return fallbackEntry;
+  }
+
+  const linkedId = event[idField];
+  if (!linkedId) {
+    return null;
+  }
+
+  return index[linkedId] ?? null;
+}
+
+function derivePriceFreshnessState(gapMinutes, gate) {
+  if (!gate) {
+    return "missing";
+  }
+
+  if (gate.overall_gate === "unchecked") {
+    return "unchecked";
+  }
+
+  if (gapMinutes === null) {
+    return "unknown";
+  }
+
+  if (gapMinutes <= freshGateMaxMinutes) {
+    return "fresh";
+  }
+
+  if (gapMinutes <= agingGateMaxMinutes) {
+    return "aging";
+  }
+
+  return "stale";
+}
+
 export function buildScenarioCurrentView(records, scenario, now = records.prototypeClock) {
   const snapshots = byScenario(records, scenario.scenario_id, "observationSnapshots");
   const gates = byScenario(records, scenario.scenario_id, "priceGates");
   const events = byScenario(records, scenario.scenario_id, "statusEvents");
+  const snapshotsById = indexBy(snapshots, "snapshot_id");
+  const gatesById = indexBy(gates, "price_gate_id");
 
   const latestSnapshot = selectLatest(snapshots, "observed_at");
   const latestGate = selectLatest(gates, "checked_at");
   const latestEvent = selectLatest(events, "changed_at");
+  const linkedSnapshot = selectLinkedEntry(latestEvent, "snapshot_id", snapshotsById, latestSnapshot);
+  const linkedGate = selectLinkedEntry(latestEvent, "price_gate_id", gatesById, latestGate);
+  const decisionReferenceAt = latestEvent?.changed_at ?? latestSnapshot?.observed_at ?? now;
+  const snapshotDecisionGapMinutes = diffMinutes(decisionReferenceAt, linkedSnapshot?.observed_at ?? null);
+  const gateDecisionGapMinutes = diffMinutes(decisionReferenceAt, linkedGate?.checked_at ?? null);
+  const priceFreshnessState = derivePriceFreshnessState(gateDecisionGapMinutes, linkedGate);
 
   return {
     scenario_id: scenario.scenario_id,
@@ -43,6 +96,24 @@ export function buildScenarioCurrentView(records, scenario, now = records.protot
     latest_price_gate: latestGate?.overall_gate ?? null,
     latest_fail_reason_codes: latestGate?.fail_reason_codes ?? [],
     latest_gate_checked_at: latestGate?.checked_at ?? null,
+    decision_reference_at: decisionReferenceAt,
+    linked_snapshot_id: linkedSnapshot?.snapshot_id ?? null,
+    linked_snapshot_at: linkedSnapshot?.observed_at ?? null,
+    linked_session_phase: linkedSnapshot?.session_phase ?? null,
+    linked_trigger_state: linkedSnapshot?.trigger_state ?? null,
+    linked_observed_signals: linkedSnapshot?.observed_signals ?? [],
+    linked_event_risk_today: linkedSnapshot?.event_risk_today ?? null,
+    linked_market_note: linkedSnapshot?.market_note ?? "",
+    linked_operator_action: linkedSnapshot?.operator_action ?? null,
+    linked_source_refs: linkedSnapshot?.source_refs ?? [],
+    linked_price_gate_id: linkedGate?.price_gate_id ?? null,
+    linked_price_gate: linkedGate?.overall_gate ?? null,
+    linked_fail_reason_codes: linkedGate?.fail_reason_codes ?? [],
+    linked_gate_checked_at: linkedGate?.checked_at ?? null,
+    linked_gate_note: linkedGate?.gate_note ?? "",
+    snapshot_decision_gap_minutes: snapshotDecisionGapMinutes,
+    gate_decision_gap_minutes: gateDecisionGapMinutes,
+    price_freshness_state: priceFreshnessState,
     next_review_phase: latestEvent?.next_review_phase ?? null,
     next_review_at: latestEvent?.next_review_at ?? null,
     is_review_due: isDue(latestEvent?.next_review_at, now)

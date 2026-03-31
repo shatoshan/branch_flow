@@ -6,3 +6,4 @@
 - [20260324_prototype-build.md](../backlog/20260324_prototype-build.md): read-only home/detail prototype を構築
 - [20260325_scenario-form-foundation.md](../backlog/20260325_scenario-form-foundation.md): browser record store と shared scenario form で stable thesis の create/update を実装
 - [20260325_daily-review-append-path.md](../backlog/20260325_daily-review-append-path.md): append-only daily review form と 3 record 同時追記の write path を実装
+- [20260325_operator-surface-hardening.md](../backlog/20260325_operator-surface-hardening.md): decision summary, linked observation evidence, price freshness を home/detail に追加

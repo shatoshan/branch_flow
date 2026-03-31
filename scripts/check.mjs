@@ -21,13 +21,29 @@ assert.deepEqual(statusMap, {
 const dueIds = views.filter((view) => view.is_review_due).map((view) => view.scenario_id);
 assert.deepEqual(dueIds, ["NKY-D-001", "NKY-D-002"]);
 
+const watchView = views.find((view) => view.scenario_id === "NKY-D-001");
+assert.ok(watchView, "watch view should exist");
+assert.equal(watchView.linked_snapshot_id, "OBS-20260324-003");
+assert.equal(watchView.linked_price_gate_id, "PG-20260324-001");
+assert.equal(watchView.price_freshness_state, "stale");
+assert.equal(watchView.gate_decision_gap_minutes, 368);
+
+const rejectedView = views.find((view) => view.scenario_id === "NKY-D-003");
+assert.ok(rejectedView, "rejected view should exist");
+assert.equal(rejectedView.linked_snapshot_id, "OBS-20260324-006");
+assert.equal(rejectedView.latest_snapshot_at, "2026-03-24T11:10:00+09:00");
+assert.equal(rejectedView.linked_snapshot_at, "2026-03-24T08:40:00+09:00");
+
 const homeMarkup = renderHomePage({
   views,
   asOf: prototypeRecords.prototypeClock,
   dueOnly: false
 });
 assert.match(homeMarkup, /Conditional option-buying terminal/);
-assert.match(homeMarkup, /latest_reason/);
+assert.match(homeMarkup, /Why not now: Trigger is still partial\./);
+assert.match(homeMarkup, /Price stale: checked 6h 8m before the latest decision\./);
+assert.match(homeMarkup, /No Trade Today/);
+assert.match(homeMarkup, /Invalidated Total/);
 assert.match(homeMarkup, /detail\.html\?scenario=NKY-D-001/);
 assert.match(homeMarkup, /mode=review/);
 
@@ -44,6 +60,10 @@ assert.match(detailMarkup, /Current View/);
 assert.match(detailMarkup, /Observation Timeline/);
 assert.match(detailMarkup, /Price Gate/);
 assert.match(detailMarkup, /Status History/);
+assert.match(detailMarkup, /linked_snapshot_at/);
+assert.match(detailMarkup, /event_risk_today/);
+assert.match(detailMarkup, /source_refs/);
+assert.match(detailMarkup, /Price stale: checked 6h 8m before the latest decision\./);
 assert.match(detailMarkup, /Edit Scenario/);
 assert.match(detailMarkup, /Add Daily Review/);
 
@@ -195,6 +215,8 @@ assert.ok(appendedView, "appended scenario should still exist in current view");
 assert.equal(appendedView.current_status, "eligible");
 assert.equal(appendedView.latest_reason_code, "price_gate_pass");
 assert.equal(appendedView.next_review_at, "2026-03-25T15:10:00+09:00");
+assert.equal(appendedView.linked_snapshot_at, "2026-03-25T08:55:00+09:00");
+assert.equal(appendedView.price_freshness_state, "fresh");
 
 const appendedDetail = getScenarioDetail(appendResult.records, "NKY-D-001", appendResult.records.prototypeClock);
 assert.equal(appendedDetail.snapshots[0].snapshot_id, appendResult.snapshot.snapshot_id);
@@ -233,6 +255,12 @@ assert.equal(uncheckedAppendResult.priceGate.overall_gate, "unchecked");
 assert.equal(uncheckedAppendResult.priceGate.expiry_bucket_ok, null);
 assert.equal(uncheckedAppendResult.priceGate.spread_ok, null);
 assert.deepEqual(uncheckedAppendResult.priceGate.fail_reason_codes, []);
+
+const uncheckedView = buildScenarioCurrentViews(uncheckedAppendResult.records, uncheckedAppendResult.records.prototypeClock).find(
+  (view) => view.scenario_id === "NKY-D-001"
+);
+assert.ok(uncheckedView, "unchecked scenario view should exist");
+assert.equal(uncheckedView.price_freshness_state, "unchecked");
 
 const reviewMarkup = renderDetailPage({
   detail,

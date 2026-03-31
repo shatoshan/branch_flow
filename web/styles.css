@@ -326,6 +326,41 @@ button {
   font-weight: 600;
 }
 
+.decision-block {
+  padding: 0.9rem;
+  border-radius: var(--radius-sm);
+  background: rgba(19, 32, 51, 0.05);
+  border: 1px solid rgba(19, 32, 51, 0.08);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.detail-decision-block {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.decision-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.decision-line {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.support-line {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 0.92rem;
+}
+
 .kv-list {
   display: grid;
   gap: 0.6rem;
@@ -630,6 +665,13 @@ fieldset.field {
   display: flex;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.timeline-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.7rem;
 }
 
 .signal-pill {

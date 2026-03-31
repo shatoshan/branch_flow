@@ -1,9 +1,9 @@
 # Current
 
-1) 現在の主対象: `daily review append path` は完了。次着手は `operator surface hardening`
-2) 次着手バックログ: [20260325_operator-surface-hardening.md](../backlog/20260325_operator-surface-hardening.md) は `todo`
-3) 直近完了: `daily review form` を `detail.html?mode=review` に追加し、1 submit で `observation_snapshot`, `price_gate`, `status_event` を append できるようにした
+1) 現在の主対象: `operator surface hardening` は完了。次着手は `japanese operator surface`
+2) 次着手バックログ: [20260325_japanese-operator-surface.md](../backlog/20260325_japanese-operator-surface.md) は `todo`
+3) 直近完了: home card / detail `Current View` に decision summary, linked observation evidence, price freshness を追加し、`No Trade Today` と `Invalidated Total` を分離した
 4) ブロッカー: なし
-5) 参照ファイル: [active.md](../plan/active.md), [20260325_input-write-path.md](../plan/20260325_input-write-path.md), [20260325_daily-review-append-path.md](../backlog/20260325_daily-review-append-path.md), [20260325_operator-surface-hardening.md](../backlog/20260325_operator-surface-hardening.md), [20260325_daily-review-append-path.md](../worklog/20260325_daily-review-append-path.md)
-6) まず実行すること: home card / detail `Current View` に decision summary を足し、`Rejected` と `Invalidated` の読み分け、観測根拠、価格鮮度を前面に出す
-7) 完了条件: home/detail で「なぜ待つ / 候補化できる / 見送る / 失効した」が latest linked records から一目で読めること
+5) 参照ファイル: [active.md](../plan/active.md), [20260325_operator-surface-hardening.md](../backlog/20260325_operator-surface-hardening.md), [20260325_japanese-operator-surface.md](../backlog/20260325_japanese-operator-surface.md), [20260325_operator-surface-hardening.md](../worklog/20260325_operator-surface-hardening.md)
+6) まず実行すること: home/detail/form の見出し、ボタン、helper copy, status / gate / phase ラベルを日本語中心へ寄せる
+7) 完了条件: operator-facing 画面を end-to-end で見たとき、日本語 UI と raw enum / key 名の境界が自然に読めること

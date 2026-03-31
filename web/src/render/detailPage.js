@@ -1,8 +1,13 @@
 import {
+  buildDecisionSummary,
+  buildPriceFreshnessSummary,
   escapeHtml,
   formatBooleanCheck,
+  formatCodeLabel,
+  formatCodeList,
   formatGateStatus,
   formatList,
+  formatMinuteGap,
   formatPhase,
   formatStatus,
   formatTimestamp,
@@ -33,8 +38,8 @@ function renderPriceGate(priceGate) {
       <div class="kv-grid">
         <div class="kv-item"><dt>checked_at</dt><dd>${escapeHtml(formatTimestamp(priceGate.checked_at))}</dd></div>
         <div class="kv-item"><dt>overall_gate</dt><dd>${escapeHtml(formatGateStatus(priceGate.overall_gate))}</dd></div>
-        <div class="kv-item"><dt>fail_reason_codes</dt><dd>${escapeHtml(formatList(priceGate.fail_reason_codes))}</dd></div>
-        <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(priceGate.gate_note)}</dd></div>
+        <div class="kv-item"><dt>fail_reason_codes</dt><dd>${escapeHtml(formatCodeList(priceGate.fail_reason_codes))}</dd></div>
+        <div class="kv-item"><dt>gate_note</dt><dd>${escapeHtml(formatCodeLabel(priceGate.gate_note))}</dd></div>
       </div>
       <div class="kv-grid">
         <div class="kv-item"><dt>expiry_bucket_ok</dt><dd>${escapeHtml(formatBooleanCheck(priceGate.expiry_bucket_ok))}</dd></div>
@@ -61,7 +66,12 @@ function renderObservationTimeline(snapshots) {
                   <span>${escapeHtml(formatTriggerState(snapshot.trigger_state))}</span>
                 </div>
                 <div class="pill-row">${renderSignals(snapshot.observed_signals)}</div>
-                <p class="timeline-note">${escapeHtml(snapshot.market_note)}</p>
+                <div class="timeline-facts">
+                  <div class="kv-item"><dt>event_risk</dt><dd>${escapeHtml(formatCodeLabel(snapshot.event_risk_today))}</dd></div>
+                  <div class="kv-item"><dt>operator_action</dt><dd>${escapeHtml(formatCodeLabel(snapshot.operator_action))}</dd></div>
+                  <div class="kv-item"><dt>source_refs</dt><dd>${escapeHtml(formatCodeList(snapshot.source_refs))}</dd></div>
+                </div>
+                <p class="timeline-note">${escapeHtml(formatCodeLabel(snapshot.market_note))}</p>
               </li>
             `
           )
@@ -83,7 +93,7 @@ function renderStatusHistory(statusEvents) {
                   <span>${escapeHtml(formatTimestamp(event.changed_at))}</span>
                   <span>${escapeHtml(formatStatus(event.from_status))} -> ${escapeHtml(formatStatus(event.to_status))}</span>
                 </div>
-                <p class="history-note">${escapeHtml(event.reason_code)} / ${escapeHtml(event.reason_detail || "none")}</p>
+                <p class="history-note">${escapeHtml(formatCodeLabel(event.reason_code))} / ${escapeHtml(formatCodeLabel(event.reason_detail))}</p>
               </li>
             `
           )
@@ -190,6 +200,7 @@ function renderHeader({ detail, mode }) {
 
 function renderScenarioSections(detail) {
   const latestPriceGate = detail.priceGates[0] ?? null;
+  const decision = buildDecisionSummary(detail.currentView);
 
   return `
     <section class="panel detail-panel">
@@ -211,14 +222,31 @@ function renderScenarioSections(detail) {
 
     <section class="panel detail-panel">
       <h2 class="section-title">Current View</h2>
-      <p class="section-copy">Derived fields come from the latest status event, observation snapshot, and price gate.</p>
+      <p class="section-copy">Latest decision context comes from the newest status event and the observation / gate records linked from it.</p>
+      <div class="decision-block detail-decision-block">
+        <p class="decision-kicker">${escapeHtml(decision.label)}</p>
+        <p class="decision-line">${escapeHtml(decision.line)}</p>
+        <p class="support-line">${escapeHtml(buildPriceFreshnessSummary(detail.currentView))}</p>
+        <p class="support-line">Kill switch: ${escapeHtml(formatCodeLabel(detail.scenario.invalidation_rule))}</p>
+      </div>
       <div class="current-grid">
-        <div class="kv-item"><dt>latest_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.latest_snapshot_at))}</dd></div>
-        <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.latest_trigger_state))}</dd></div>
-        <div class="kv-item"><dt>latest_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.latest_price_gate))}</dd></div>
-        <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(detail.currentView.latest_reason_code)}</dd></div>
-        <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(detail.currentView.latest_reason_detail || "none")}</dd></div>
+        <div class="kv-item"><dt>decision_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.decision_reference_at))}</dd></div>
+        <div class="kv-item"><dt>linked_snapshot_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_snapshot_at))}</dd></div>
+        <div class="kv-item"><dt>snapshot_gap</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.snapshot_decision_gap_minutes))}</dd></div>
+        <div class="kv-item"><dt>trigger_state</dt><dd>${escapeHtml(formatTriggerState(detail.currentView.linked_trigger_state))}</dd></div>
+        <div class="kv-item"><dt>observed_signals</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_observed_signals))}</dd></div>
+        <div class="kv-item"><dt>event_risk_today</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_event_risk_today))}</dd></div>
+        <div class="kv-item"><dt>operator_action</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_operator_action))}</dd></div>
+        <div class="kv-item"><dt>source_refs</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_source_refs))}</dd></div>
+        <div class="kv-item"><dt>linked_gate_at</dt><dd>${escapeHtml(formatTimestamp(detail.currentView.linked_gate_checked_at))}</dd></div>
+        <div class="kv-item"><dt>gate_gap</dt><dd>${escapeHtml(formatMinuteGap(detail.currentView.gate_decision_gap_minutes))}</dd></div>
+        <div class="kv-item"><dt>linked_price_gate</dt><dd>${escapeHtml(formatGateStatus(detail.currentView.linked_price_gate))}</dd></div>
+        <div class="kv-item"><dt>fail_reasons</dt><dd>${escapeHtml(formatCodeList(detail.currentView.linked_fail_reason_codes))}</dd></div>
+        <div class="kv-item"><dt>latest_reason_code</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_code))}</dd></div>
+        <div class="kv-item"><dt>latest_reason_detail</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.latest_reason_detail))}</dd></div>
         <div class="kv-item"><dt>next_review_phase</dt><dd>${escapeHtml(formatPhase(detail.currentView.next_review_phase))}</dd></div>
+        <div class="kv-item"><dt>linked_gate_note</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_gate_note))}</dd></div>
+        <div class="kv-item"><dt>market_note</dt><dd>${escapeHtml(formatCodeLabel(detail.currentView.linked_market_note))}</dd></div>
       </div>
     </section>
 

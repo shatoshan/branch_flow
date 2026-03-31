@@ -52,6 +52,6 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - `daily review append path` も完了し、home/detail から `mode=review` で append-only daily review を追記できる
 - 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model / Product Skeleton / static prototype stack / browser record store / `localStorage` 永続化 / `detail.html` shared scenario form
 - 固定済み: `daily review form`, review 系 ID 自動採番, `overall_gate: unchecked` 対応, reload persistence, current view / history 即時再描画
-- 次着手は operator surface hardening。decision summary, 観測根拠, 価格鮮度を selector/render に足す
-- その後に日本語化 backlog を進める
+- operator surface hardening は完了。decision summary, 観測根拠, 価格鮮度, latest linked record surface を home/detail に追加済み
+- 次着手は日本語化 backlog。operator-facing copy と label を日本語中心へ寄せる
 - 3 本目で seed reset と JSON export/import を含む import-friendly surface を整える

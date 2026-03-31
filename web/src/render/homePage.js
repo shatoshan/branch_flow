@@ -1,7 +1,12 @@
 import {
+  buildDecisionSummary,
+  buildPriceFreshnessSummary,
   escapeHtml,
+  formatCodeLabel,
+  formatCodeList,
   formatStatus,
-  formatTimestamp
+  formatTimestamp,
+  isSameTokyoDay
 } from "../lib/formatters.js";
 
 const statusOrder = ["watch", "eligible", "rejected", "invalidated"];
@@ -15,6 +20,11 @@ function buildReviewHref(scenarioId) {
 }
 
 function renderCard(view) {
+  const decision = buildDecisionSummary(view);
+  const evidenceLine = view.linked_snapshot_id
+    ? `Observed ${formatCodeList(view.linked_observed_signals)} | Sources ${formatCodeList(view.linked_source_refs)}`
+    : "Observed none | Sources none";
+
   return `
     <article class="scenario-card ${escapeHtml(view.current_status)}">
       <div class="card-title-row">
@@ -26,6 +36,12 @@ function renderCard(view) {
         </div>
         ${view.is_review_due ? '<span class="due-chip">due now</span>' : ""}
       </div>
+      <div class="decision-block">
+        <p class="decision-kicker">${escapeHtml(decision.label)}</p>
+        <p class="decision-line">${escapeHtml(decision.compact)}</p>
+        <p class="support-line">${escapeHtml(evidenceLine)}</p>
+        <p class="support-line">${escapeHtml(buildPriceFreshnessSummary(view))}</p>
+      </div>
       <dl class="kv-list">
         <div class="kv-item"><dt>market</dt><dd>${escapeHtml(view.market)}</dd></div>
         <div class="kv-item"><dt>direction</dt><dd>${escapeHtml(view.direction)}</dd></div>
@@ -35,7 +51,7 @@ function renderCard(view) {
         <div class="kv-item"><dt>price</dt><dd>${escapeHtml(view.card_price_gate_summary)}</dd></div>
         <div class="kv-item"><dt>invalidation</dt><dd>${escapeHtml(view.invalidation_rule)}</dd></div>
         <div class="kv-item"><dt>next_review</dt><dd>${escapeHtml(formatTimestamp(view.next_review_at))}</dd></div>
-        <div class="kv-item"><dt>latest_reason</dt><dd>${escapeHtml(view.latest_reason_code)}</dd></div>
+        <div class="kv-item"><dt>event_risk</dt><dd>${escapeHtml(formatCodeLabel(view.linked_event_risk_today))}</dd></div>
       </dl>
       <div class="card-actions">
         <a class="card-link" href="./detail.html?scenario=${encodeURIComponent(view.scenario_id)}">Open Detail</a>
@@ -67,7 +83,10 @@ export function renderHomePage({ views, asOf, dueOnly }) {
 
   const dueNow = views.filter((view) => view.is_review_due).length;
   const upcoming = views.filter((view) => view.next_review_at && !view.is_review_due).length;
-  const noTradeToday = views.filter((view) => ["rejected", "invalidated"].includes(view.current_status)).length;
+  const noTradeToday = views.filter(
+    (view) => view.current_status === "rejected" && isSameTokyoDay(view.latest_status_changed_at, asOf)
+  ).length;
+  const invalidatedTotal = views.filter((view) => view.current_status === "invalidated").length;
 
   return `
     <main class="shell">
@@ -76,7 +95,7 @@ export function renderHomePage({ views, asOf, dueOnly }) {
           <div>
             <p class="eyebrow">BranchFlow Prototype</p>
             <h1>Conditional option-buying terminal</h1>
-            <p>Forecasts are out of scope. Stable thesis records and append-only daily reviews now persist in the browser with a shared current view.</p>
+            <p>Forecasts are out of scope. Home cards now surface why now / why not now, linked observation evidence, and whether the latest price check is still fresh enough to trust.</p>
           </div>
           <div class="timestamp">As of ${escapeHtml(formatTimestamp(asOf))}</div>
         </div>
@@ -97,6 +116,7 @@ export function renderHomePage({ views, asOf, dueOnly }) {
           <div class="metric-card"><span>Due Now</span><strong>${dueNow}</strong></div>
           <div class="metric-card"><span>Upcoming</span><strong>${upcoming}</strong></div>
           <div class="metric-card"><span>No Trade Today</span><strong>${noTradeToday}</strong></div>
+          <div class="metric-card"><span>Invalidated Total</span><strong>${invalidatedTotal}</strong></div>
         </div>
       </section>
 
