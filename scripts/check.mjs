@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 
 import { prototypeRecords } from "../web/src/data/sampleRecords.js";
+import {
+  browserRecordStorageKey,
+  exportRecordsJson,
+  importRecordsFromJson,
+  loadRecords,
+  parseRecordsJson,
+  resetRecordsInStore
+} from "../web/src/lib/browserRecordStore.js";
 import { appendDailyReviewRecords, createDailyReviewDraft } from "../web/src/lib/dailyReview.js";
 import { createEmptyScenarioDraft, scenarioToDraft, upsertScenarioRecords } from "../web/src/lib/scenarioDraft.js";
 import { buildScenarioCurrentViews, getScenarioDetail } from "../web/src/lib/scenarioViews.js";
@@ -37,13 +45,20 @@ assert.equal(rejectedView.linked_snapshot_at, "2026-03-24T08:40:00+09:00");
 const homeMarkup = renderHomePage({
   views,
   asOf: prototypeRecords.prototypeClock,
-  dueOnly: false
+  dueOnly: false,
+  operatorSurface: {
+    importJsonText: "",
+    notice: "",
+    errors: []
+  }
 });
 assert.match(homeMarkup, /条件付きオプション買い端末/);
 assert.match(homeMarkup, /監視継続理由: トリガーはまだ一部成立です。/);
 assert.match(homeMarkup, /価格鮮度: 古い（最新判断の6時間8分前に確認）。/);
 assert.match(homeMarkup, /本日見送り/);
 assert.match(homeMarkup, /累計失効/);
+assert.match(homeMarkup, /保存スナップショット操作/);
+assert.match(homeMarkup, /JSON を書き出す/);
 assert.match(homeMarkup, /detail\.html\?scenario=NKY-D-001/);
 assert.match(homeMarkup, /mode=review/);
 
@@ -53,13 +68,19 @@ const detailMarkup = renderDetailPage({
   detail,
   mode: "view",
   draft: scenarioToDraft(detail.scenario),
-  errors: []
+  errors: [],
+  operatorSurface: {
+    importJsonText: "",
+    notice: "",
+    errors: []
+  }
 });
 assert.match(detailMarkup, /シナリオ仮説/);
 assert.match(detailMarkup, /現在の見立て/);
 assert.match(detailMarkup, /観測タイムライン/);
 assert.match(detailMarkup, /価格条件/);
 assert.match(detailMarkup, /状態履歴/);
+assert.match(detailMarkup, /sample seed に戻す/);
 assert.match(detailMarkup, /参照観測時刻/);
 assert.match(detailMarkup, /当日イベント/);
 assert.match(detailMarkup, /参照ソース/);
@@ -141,7 +162,12 @@ const editMarkup = renderDetailPage({
   detail,
   mode: "edit",
   draft: scenarioToDraft(detail.scenario),
-  errors: []
+  errors: [],
+  operatorSurface: {
+    importJsonText: "",
+    notice: "",
+    errors: []
+  }
 });
 assert.match(editMarkup, /シナリオを保存/);
 assert.match(editMarkup, /レビュー履歴には触れず、固定的な仮説項目だけを更新します。/);
@@ -150,7 +176,12 @@ const newMarkup = renderDetailPage({
   detail: null,
   mode: "new",
   draft: createEmptyScenarioDraft(),
-  errors: []
+  errors: [],
+  operatorSurface: {
+    importJsonText: "",
+    notice: "",
+    errors: []
+  }
 });
 assert.match(newMarkup, /新規シナリオ/);
 assert.match(newMarkup, /見直し頻度/);
@@ -266,9 +297,87 @@ const reviewMarkup = renderDetailPage({
   detail,
   mode: "review",
   draft: dailyReviewDraft,
-  errors: []
+  errors: [],
+  operatorSurface: {
+    importJsonText: "",
+    notice: "",
+    errors: []
+  }
 });
 assert.match(reviewMarkup, /日次レビューを追記/);
 assert.match(reviewMarkup, /観測、価格条件、状態変更をまとめて追記します。/);
+
+const missingMarkup = renderDetailPage({
+  detail: null,
+  mode: "view",
+  draft: null,
+  errors: [],
+  operatorSurface: {
+    importJsonText: "",
+    notice: "sample seed に復元しました",
+    errors: []
+  }
+});
+assert.match(missingMarkup, /シナリオが見つかりません/);
+assert.match(missingMarkup, /保存スナップショット操作/);
+
+const exportJson = exportRecordsJson(appendResult.records);
+const parsedExportResult = parseRecordsJson(exportJson);
+assert.equal(parsedExportResult.ok, true, "exported JSON should parse back");
+assert.deepEqual(parsedExportResult.records, appendResult.records);
+
+const invalidJsonResult = parseRecordsJson(
+  JSON.stringify({
+    ...prototypeRecords,
+    scenarios: [
+      {
+        ...prototypeRecords.scenarios[0],
+        market: "unknown_market"
+      }
+    ]
+  })
+);
+assert.equal(invalidJsonResult.ok, false, "invalid enum import should fail");
+assert.match(invalidJsonResult.errors.join("\n"), /scenarios\[0\]\.market/);
+
+const originalWindow = globalThis.window;
+const storage = new Map([[browserRecordStorageKey, exportRecordsJson(prototypeRecords)]]);
+globalThis.window = {
+  localStorage: {
+    getItem(key) {
+      return storage.has(key) ? storage.get(key) : null;
+    },
+    setItem(key, value) {
+      storage.set(key, value);
+    }
+  }
+};
+
+const storeImportResult = importRecordsFromJson(exportJson);
+assert.equal(storeImportResult.ok, true, "store import should succeed");
+assert.equal(loadRecords().statusEvents.length, appendResult.records.statusEvents.length);
+
+const resetResult = resetRecordsInStore();
+assert.deepEqual(resetResult, prototypeRecords, "reset should restore prototype seed");
+assert.equal(loadRecords().statusEvents.length, prototypeRecords.statusEvents.length);
+
+const restoredImportResult = importRecordsFromJson(exportJson);
+assert.equal(restoredImportResult.ok, true, "re-import after reset should succeed");
+const restoredRecords = loadRecords();
+assert.equal(restoredRecords.statusEvents.length, appendResult.records.statusEvents.length);
+const restoredDetail = getScenarioDetail(restoredRecords, "NKY-D-001", restoredRecords.prototypeClock);
+assert.equal(restoredDetail.statusEvents[0].status_event_id, appendResult.statusEvent.status_event_id);
+assert.equal(restoredDetail.currentView.current_status, "eligible");
+
+const beforeInvalidImport = storage.get(browserRecordStorageKey);
+const storeInvalidImportResult = importRecordsFromJson('{"prototypeClock":"broken"}');
+assert.equal(storeInvalidImportResult.ok, false, "invalid import should fail");
+assert.equal(storage.get(browserRecordStorageKey), beforeInvalidImport, "invalid import must not overwrite store");
+
+if (originalWindow === undefined) {
+  delete globalThis.window;
+} else {
+  globalThis.window = originalWindow;
+}
 
 console.log("check: ok");

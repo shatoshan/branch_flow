@@ -178,6 +178,12 @@ button {
   border-color: rgba(19, 32, 51, 0.1);
 }
 
+.action.danger {
+  color: var(--rejected);
+  border-color: rgba(170, 88, 51, 0.18);
+  background: rgba(170, 88, 51, 0.08);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -430,6 +436,20 @@ button {
   padding: 1.2rem;
 }
 
+.operator-panel,
+.operator-import-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.operator-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .centered-row {
   justify-content: center;
 }
@@ -596,6 +616,14 @@ fieldset.field {
   border-radius: var(--radius-md);
   background: rgba(170, 88, 51, 0.12);
   border: 1px solid rgba(170, 88, 51, 0.2);
+}
+
+.feedback-note {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(22, 98, 79, 0.1);
+  border: 1px solid rgba(22, 98, 79, 0.18);
+  color: var(--eligible);
 }
 
 .form-errors-title {

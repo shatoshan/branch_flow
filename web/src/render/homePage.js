@@ -9,6 +9,7 @@ import {
   formatTimestamp,
   isSameTokyoDay
 } from "../lib/formatters.js";
+import { renderOperatorSurface } from "./operatorSurface.js";
 
 const statusOrder = ["watch", "eligible", "rejected", "invalidated"];
 
@@ -76,7 +77,7 @@ function renderStatusColumn(status, views) {
   `;
 }
 
-export function renderHomePage({ views, asOf, dueOnly }) {
+export function renderHomePage({ views, asOf, dueOnly, operatorSurface }) {
   const filteredViews = dueOnly ? views.filter((view) => view.is_review_due) : views;
   const grouped = groupByStatus(filteredViews);
   const firstReviewTarget = views.find((view) => view.is_review_due) ?? views[0] ?? null;
@@ -120,6 +121,8 @@ export function renderHomePage({ views, asOf, dueOnly }) {
           <div class="metric-card"><span>累計失効</span><strong>${invalidatedTotal}</strong></div>
         </div>
       </section>
+
+      ${renderOperatorSurface(operatorSurface)}
 
       <section class="status-grid">
         ${statusOrder.map((status) => renderStatusColumn(status, grouped[status] ?? [])).join("")}

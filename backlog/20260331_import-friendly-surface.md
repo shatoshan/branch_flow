@@ -1,6 +1,6 @@
 # 20260331 Import-Friendly Surface
 
-Status: todo
+Status: done
 Prerequisite: backlog/20260325_japanese-operator-surface.md
 Worklog: worklog/20260331_import-friendly-surface.md
 Result: web/, scripts/check.mjs

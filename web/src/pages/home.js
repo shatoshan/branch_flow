@@ -1,8 +1,12 @@
 import { loadRecords } from "../lib/browserRecordStore.js";
+import { bindOperatorSurface, createOperatorSurfaceState } from "./operatorSurface.js";
 import { buildScenarioCurrentViews } from "../lib/scenarioViews.js";
 import { renderHomePage } from "../render/homePage.js";
 
 const app = document.querySelector("#app");
+const pageState = {
+  operatorSurface: createOperatorSurfaceState()
+};
 
 function getDueOnly() {
   const params = new URLSearchParams(window.location.search);
@@ -36,10 +40,15 @@ function render() {
   app.innerHTML = renderHomePage({
     views,
     asOf: records.prototypeClock,
-    dueOnly
+    dueOnly,
+    operatorSurface: pageState.operatorSurface
   });
 
   bindFilterActions();
+  bindOperatorSurface({
+    state: pageState.operatorSurface,
+    render
+  });
 }
 
 render();

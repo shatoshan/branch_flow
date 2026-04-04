@@ -53,4 +53,5 @@ BranchFlow を「予測装置」ではなく、「条件付きの賭けを管理
 - 固定済み: 日経平均 / ローカル Web UI / 手動入力先行 / 最低限価格ガード / downside 先行サンプル / 4 record model / Product Skeleton / static prototype stack / browser record store / `localStorage` 永続化 / `detail.html` shared scenario form
 - 固定済み: `daily review form`, review 系 ID 自動採番, `overall_gate: unchecked` 対応, reload persistence, current view / history 即時再描画
 - operator surface hardening と日本語化 backlog は完了。decision summary, 観測根拠, 価格鮮度, operator-facing copy / label の日本語化まで完了済み
-- 次着手は [20260331_import-friendly-surface.md](../backlog/20260331_import-friendly-surface.md)。seed reset と JSON export/import を含む import-friendly surface を整える
+- `import-friendly surface` も完了。home/detail から seed reset, JSON export, JSON import, shape validation, invalid import 保護を扱える
+- 次は CSV 受け口へ寄せる列名 / キー名整理を planning し、JSON surface で確定した null / enum / cross-reference 境界を document 化する

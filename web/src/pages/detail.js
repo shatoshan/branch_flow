@@ -1,5 +1,6 @@
 import { appendDailyReviewInStore, loadRecords, upsertScenarioInStore } from "../lib/browserRecordStore.js";
 import { createDailyReviewDraft } from "../lib/dailyReview.js";
+import { bindOperatorSurface, createOperatorSurfaceState } from "./operatorSurface.js";
 import { createEmptyScenarioDraft, scenarioToDraft } from "../lib/scenarioDraft.js";
 import { getScenarioDetail } from "../lib/scenarioViews.js";
 import { renderDetailPage } from "../render/detailPage.js";
@@ -9,7 +10,8 @@ const pageState = {
   scenarioDraft: null,
   scenarioErrors: [],
   reviewDraft: null,
-  reviewErrors: []
+  reviewErrors: [],
+  operatorSurface: createOperatorSurfaceState()
 };
 
 function getMode() {
@@ -144,11 +146,16 @@ function render() {
     detail,
     mode,
     draft,
-    errors
+    errors,
+    operatorSurface: pageState.operatorSurface
   });
 
   bindScenarioForm();
   bindReviewForm();
+  bindOperatorSurface({
+    state: pageState.operatorSurface,
+    render
+  });
 }
 
 render();

@@ -15,6 +15,7 @@ import {
   formatTriggerState
 } from "../lib/formatters.js";
 import { renderDailyReviewForm } from "./dailyReviewForm.js";
+import { renderOperatorSurface } from "./operatorSurface.js";
 import { renderScenarioForm } from "./scenarioForm.js";
 
 function renderSignals(signals) {
@@ -106,16 +107,14 @@ function renderStatusHistory(statusEvents) {
 
 function renderMissingMessage() {
   return `
-    <main class="detail-shell">
-      <section class="panel detail-panel missing-message">
-        <h1>シナリオが見つかりません</h1>
-        <p class="panel-copy">ホームから既存シナリオを開くか、新規シナリオを作成してください。</p>
-        <div class="action-row centered-row">
-          <a class="back-link" href="./index.html">ホームへ</a>
-          <a class="action primary" href="./detail.html?mode=new">新規シナリオ</a>
-        </div>
-      </section>
-    </main>
+    <section class="panel detail-panel missing-message">
+      <h1>シナリオが見つかりません</h1>
+      <p class="panel-copy">ホームから既存シナリオを開くか、新規シナリオを作成してください。直前に reset / import を行った場合は、下の保存スナップショット操作から戻せます。</p>
+      <div class="action-row centered-row">
+        <a class="back-link" href="./index.html">ホームへ</a>
+        <a class="action primary" href="./detail.html?mode=new">新規シナリオ</a>
+      </div>
+    </section>
   `;
 }
 
@@ -273,11 +272,7 @@ function renderScenarioSections(detail) {
   `;
 }
 
-export function renderDetailPage({ detail, mode, draft, errors }) {
-  if (!detail && mode !== "new") {
-    return renderMissingMessage();
-  }
-
+export function renderDetailPage({ detail, mode, draft, errors, operatorSurface }) {
   const formMarkup =
     mode === "new" || mode === "edit"
       ? renderScenarioForm({
@@ -299,9 +294,10 @@ export function renderDetailPage({ detail, mode, draft, errors }) {
 
   return `
     <main class="detail-shell">
-      ${renderHeader({ detail, mode })}
-      ${formMarkup}
-      ${detail ? renderScenarioSections(detail) : ""}
+      ${detail || mode === "new" ? renderHeader({ detail, mode }) : ""}
+      ${renderOperatorSurface(operatorSurface)}
+      ${detail || mode === "new" ? formMarkup : ""}
+      ${detail ? renderScenarioSections(detail) : mode !== "new" ? renderMissingMessage() : ""}
     </main>
   `;
 }

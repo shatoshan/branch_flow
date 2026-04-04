@@ -8,3 +8,4 @@
 - [20260325_daily-review-append-path.md](../backlog/20260325_daily-review-append-path.md): append-only daily review form と 3 record 同時追記の write path を実装
 - [20260325_operator-surface-hardening.md](../backlog/20260325_operator-surface-hardening.md): decision summary, linked observation evidence, price freshness を home/detail に追加
 - [20260325_japanese-operator-surface.md](../backlog/20260325_japanese-operator-surface.md): operator-facing UI と固定語彙を日本語中心へ寄せ、翻訳方針を materials に整理
+- [20260331_import-friendly-surface.md](../backlog/20260331_import-friendly-surface.md): home/detail から seed reset と JSON export/import を扱える surface を追加し、store roundtrip と import validation を実装
